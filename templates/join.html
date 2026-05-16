@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Join {{ tournament_name }} · EnPassant{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 480px; padding-top: 6vh;">
+  <header style="margin-bottom: 4vh; text-align: center;">
+    <div class="brand" style="margin-bottom: 1.5rem;">
+      <span>en</span><span class="brand-dot"></span><span class="accent">passant</span>
+    </div>
+    <div class="eyebrow" style="margin-bottom: 0.6rem;">Joining</div>
+    <h1 style="font-size: 2.4rem;">{{ tournament_name }}</h1>
+    <div class="mono faint" style="margin-top: 0.6rem; letter-spacing: 0.25em;">{{ tid }}</div>
+  </header>
+
+  <div class="card card-elevated">
+    <form id="join-form" class="col" style="gap: 1.5rem;">
+      <div>
+        <label for="pname">Your name</label>
+        <input type="text" id="pname" required maxlength="40" placeholder="e.g. Alex" autocomplete="off" autofocus>
+      </div>
+      <div>
+        <label for="pelo">ELO rating <span style="text-transform: none; color: var(--ink-faint); letter-spacing: 0;">(optional, used for Swiss pairings)</span></label>
+        <input type="number" id="pelo" min="0" max="3500" value="1200">
+      </div>
+      <button class="btn btn-primary btn-lg" type="submit">I'm in →</button>
+    </form>
+  </div>
+
+  <p class="muted" style="text-align: center; margin-top: 2rem; font-size: 0.9rem; line-height: 1.5;">
+    After each game, you'll report your result here. Your opponent will confirm it.
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TID = "{{ tid }}";
+
+// If they already joined this tournament from this browser, send them straight in
+const stored = localStorage.getItem(`ep_player_${TID}`);
+if (stored) {
+  try {
+    const { id } = JSON.parse(stored);
+    if (id) {
+      // Verify the player still exists
+      fetch(`/api/tournaments/${TID}/players/${id}/matches`).then(r => {
+        if (r.ok) location.href = `/player/${TID}/${id}`;
+      });
+    }
+  } catch (e) {}
+}
+
+document.getElementById('join-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = document.getElementById('pname').value.trim();
+  const elo = parseInt(document.getElementById('pelo').value, 10) || 1200;
+  if (!name) return;
+  try {
+    const p = await EP.api('POST', `/api/tournaments/${TID}/players`, { name, elo });
+    localStorage.setItem(`ep_player_${TID}`, JSON.stringify({ id: p.id, name: p.name }));
+    location.href = `/player/${TID}/${p.id}`;
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  }
+});
+</script>
+{% endblock %}

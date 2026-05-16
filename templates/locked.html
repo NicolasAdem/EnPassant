@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Host access required · EnPassant{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 540px; padding-top: 8vh; text-align: center;">
+  <div class="brand" style="margin-bottom: 3vh; justify-content: center;">
+    <span>en</span><span class="brand-dot"></span><span class="accent">passant</span>
+  </div>
+  <div style="font-size: 3rem; margin-bottom: 1rem;">🔒</div>
+  <h1 style="font-size: 2rem; margin-bottom: 1rem;">Host access required</h1>
+  <p class="muted" style="line-height: 1.6;">
+    This is the host dashboard for tournament <span class="mono accent">{{ tid }}</span>.
+    Only the person who created it can access this page — they need the secret link.
+  </p>
+  <p style="margin-top: 2rem;">
+    Are you a player? Use the QR code or
+    <a href="/join/{{ tid }}" style="color: var(--lime);">join here</a>.
+  </p>
+  <p style="margin-top: 2rem;">
+    Want to watch?
+    <a href="/projector/{{ tid }}" style="color: var(--lime);">Open the live view</a>.
+  </p>
+</div>
+{% endblock %}

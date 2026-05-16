@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}{{ tournament_name }} · Live{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/css/projector.css">
+{% endblock %}
+
+{% block body_class %}projector-body{% endblock %}
+
+{% block content %}
+<div class="projector">
+  <header class="proj-header">
+    <div>
+      <div class="proj-brand">en<span class="brand-dot" style="display: inline-block; width: 6px; height: 6px; background: var(--lime); border-radius: 50%; margin: 0 4px 2px;"></span><span class="accent">passant</span></div>
+      <div class="proj-title" id="proj-title">{{ tournament_name }}</div>
+    </div>
+    <div class="proj-meta">
+      <div class="stat">
+        <div class="stat-label">Round</div>
+        <div class="stat-value" id="proj-round">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Players</div>
+        <div class="stat-value" id="proj-players">0</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Code</div>
+        <div class="stat-value" id="proj-code">{{ tid }}</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="proj-body">
+    <section class="proj-leaderboard">
+      <div class="proj-section-title">Standings · live</div>
+      <div class="proj-rank-list" id="rank-list">
+        <!-- rows positioned absolutely; populated by JS -->
+      </div>
+    </section>
+
+    <section class="proj-matches">
+      <div class="proj-section-title">Boards in play</div>
+      <div class="match-list" id="match-list">
+        <!-- populated -->
+      </div>
+    </section>
+  </main>
+
+  <footer class="proj-ticker">
+    <div class="ticker-label">Live feed</div>
+    <div class="ticker-feed" id="ticker"></div>
+  </footer>
+
+  <!-- Empty state overlay (no players yet) -->
+  <div class="round-hero" id="empty-overlay" style="display: none;">
+    <div class="label">Join the tournament</div>
+    <div style="background: white; padding: 20px; border-radius: 16px;">
+      <img src="/api/tournaments/{{ tid }}/qrcode.png" alt="Join QR" style="width: 280px; height: 280px;">
+    </div>
+    <div class="mono accent" style="font-size: 2.5rem; letter-spacing: 0.3em;">{{ tid }}</div>
+  </div>
+
+  <!-- Round-start hero -->
+  <div class="round-hero" id="round-hero">
+    <div class="label">Round</div>
+    <div class="big" id="round-hero-num">1</div>
+    <div class="mode" id="round-hero-mode">Swiss pairing</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TID = "{{ tid }}";
+
+// Row height in projector units. Adjust based on count.
+const RANK_ROW_HEIGHT_BASE = 72; // px when ≤ 10 players
+
+let lastRanks = new Map(); // player_id -> rank (1-based)
+let tickerQueue = [];
+let tickerSeenIds = new Set();
+
+function rowHeight(count) {
+  // Squeeze rows when many players
+  if (count <= 8) return 78;
+  if (count <= 12) return 64;
+  if (count <= 16) return 52;
+  if (count <= 22) return 42;
+  return 36;
+}
+
+function render(state, hint) {
+  const t = state.tournament;
+  const players = state.players || [];
+  const matches = state.current_matches || [];
+  const events = state.events || [];
+
+  document.getElementById('proj-title').textContent = t.name;
+  document.getElementById('proj-round').textContent = t.current_round || '—';
+  document.getElementById('proj-players').textContent = players.length;
+
+  // Empty state
+  const empty = document.getElementById('empty-overlay');
+  if (players.length === 0 && t.current_round === 0) {
+    empty.style.display = 'flex';
+    empty.classList.add('show');
+  } else {
+    empty.classList.remove('show');
+    setTimeout(() => { if (!empty.classList.contains('show')) empty.style.display = 'none'; }, 400);
+  }
+
+  renderLeaderboard(players, matches);
+  renderMatchList(matches);
+  renderTicker(events);
+
+  // Round-start hero
+  if (hint && hint.kind === 'round_start') {
+    showRoundHero(hint.round, hint.message);
+  }
+}
+
+function renderLeaderboard(players, matches) {
+  const list = document.getElementById('rank-list');
+  const h = rowHeight(players.length);
+  list.style.minHeight = `${h * Math.max(players.length, 1)}px`;
+
+  // Compute rank changes
+  const newRanks = new Map();
+  players.forEach((p, i) => newRanks.set(p.id, i + 1));
+
+  // Build a map of existing rows so we update in-place (preserves smooth animation)
+  const existing = new Map();
+  list.querySelectorAll('.rank-row').forEach(el => {
+    existing.set(el.dataset.pid, el);
+  });
+
+  // Remove rows for players no longer in list
+  for (const [pid, el] of existing.entries()) {
+    if (!newRanks.has(pid)) {
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 400);
+    }
+  }
+
+  // Build/update each row
+  players.forEach((p, i) => {
+    const oldRank = lastRanks.get(p.id);
+    const newRank = i + 1;
+    let movement = '';
+    if (oldRank && oldRank !== newRank) {
+      movement = newRank < oldRank ? 'rising' : 'falling';
+    }
+
+    let el = existing.get(p.id);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'rank-row';
+      el.dataset.pid = p.id;
+      // Insert hidden, then fade in
+      el.style.opacity = '0';
+      list.appendChild(el);
+      requestAnimationFrame(() => { el.style.opacity = '1'; });
+    }
+
+    el.style.top = `${(newRank - 1) * h}px`;
+    el.style.height = `${h - 6}px`;
+    el.classList.toggle('leader', newRank === 1);
+    el.classList.remove('rising', 'falling');
+    if (movement) {
+      el.classList.add(movement);
+      setTimeout(() => el.classList.remove('rising', 'falling'), 2500);
+    }
+
+    el.innerHTML = `
+      <div class="rank-num">${newRank}</div>
+      <div>
+        <div class="rank-name">${EP.escape(p.name)}</div>
+        <div class="rank-elo">ELO ${p.elo}</div>
+      </div>
+      <div class="rank-score">${EP.formatScore(p.score)}</div>
+      <div class="rank-buchholz">BH ${EP.formatScore(p.buchholz)}</div>
+    `;
+  });
+
+  lastRanks = newRanks;
+}
+
+function renderMatchList(matches) {
+  const list = document.getElementById('match-list');
+  if (!matches.length) {
+    list.innerHTML = `
+      <div style="text-align: center; padding: 4vh 1vw; color: var(--ink-mute); font-family: var(--font-display); font-style: italic;">
+        Waiting for the next round…
+      </div>`;
+    return;
+  }
+  list.innerHTML = matches.map(m => {
+    if (m.status === 'bye') {
+      return `
+        <div class="match-row bye">
+          <div class="board-num">${m.board_number}</div>
+          <div class="player">${EP.escape(m.white_name)}</div>
+          <div class="vs">BYE</div>
+          <div></div>
+          <div></div>
+        </div>
+      `;
+    }
+    const statusCls = m.status; // pending | reported | confirmed | disputed
+    let badge = '';
+    if (m.status === 'reported') badge = '<span class="badge badge-reported">PENDING</span>';
+    if (m.status === 'confirmed') {
+      const w = m.result === 'white' ? '1-0' : m.result === 'black' ? '0-1' : '½-½';
+      badge = `<span class="mono accent" style="font-weight: 700; letter-spacing: 0.1em;">${w}</span>`;
+    }
+    if (m.status === 'disputed') badge = '<span class="badge badge-disputed">DISPUTE</span>';
+    return `
+      <div class="match-row ${statusCls}">
+        <div class="board-num">${m.board_number}</div>
+        <div class="player white">${EP.escape(m.white_name)}</div>
+        <div class="vs">vs</div>
+        <div class="player black">${EP.escape(m.black_name)}</div>
+        <div>${badge}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderTicker(events) {
+  // Only result events go on the ticker; we want it to feel like a sportscast feed
+  const ticker = document.getElementById('ticker');
+  const items = events.filter(ev => ev.kind === 'result' || ev.kind === 'round_start' || ev.kind === 'join');
+
+  // Add new items we haven't seen yet
+  for (const ev of items.slice().reverse()) {  // oldest first
+    if (tickerSeenIds.has(ev.id)) continue;
+    tickerSeenIds.add(ev.id);
+    addTickerItem(ev);
+  }
+}
+
+function addTickerItem(ev) {
+  const ticker = document.getElementById('ticker');
+  const el = document.createElement('div');
+  el.className = 'ticker-item';
+  const icon = ev.kind === 'result' ? '♟' : ev.kind === 'round_start' ? '◆' : '+';
+  el.innerHTML = `<span class="sep">${icon}</span><span>${EP.escape(ev.message)}</span>`;
+  // Stagger start times so multiple items don't all fly together
+  const existing = ticker.querySelectorAll('.ticker-item').length;
+  el.style.animationDelay = `${existing * 1.5}s`;
+  ticker.appendChild(el);
+  // Clean up after the animation
+  setTimeout(() => el.remove(), 22000 + existing * 1500);
+}
+
+function showRoundHero(roundNum, message) {
+  const hero = document.getElementById('round-hero');
+  document.getElementById('round-hero-num').textContent = roundNum;
+  document.getElementById('round-hero-mode').textContent = message || 'New round';
+  hero.classList.remove('show');
+  // Force reflow then re-add
+  void hero.offsetWidth;
+  hero.classList.add('show');
+  setTimeout(() => hero.classList.remove('show'), 3000);
+}
+
+// Initial fetch + WS
+EP.api('GET', `/api/tournaments/${TID}/state`).then(s => render(s, null)).catch(err => {
+  console.error(err);
+});
+
+EP.connectWs(TID, (msg) => {
+  if (msg.type === 'state') {
+    render(msg.data, msg.event);
+  }
+});
+
+// Auto-refresh fallback if WS drops for too long (every 30s)
+setInterval(() => {
+  if (!EP.ws || EP.ws.readyState !== WebSocket.OPEN) {
+    EP.api('GET', `/api/tournaments/${TID}/state`).then(s => render(s, null)).catch(() => {});
+  }
+}, 30000);
+</script>
+{% endblock %}

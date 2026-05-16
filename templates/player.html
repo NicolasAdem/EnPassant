@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}{{ player_name }} · {{ tournament_name }}{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 540px;">
+  <header class="row between" style="margin-bottom: 3vh;">
+    <a href="/" class="brand" style="text-decoration: none; color: inherit;">
+      <span>en</span><span class="brand-dot"></span><span class="accent">passant</span>
+    </a>
+    <div style="text-align: right;">
+      <div class="eyebrow">{{ tournament_name }}</div>
+      <div class="mono faint" style="font-size: 0.85rem;">{{ tid }}</div>
+    </div>
+  </header>
+
+  <section style="margin-bottom: 2.5vh;">
+    <div class="eyebrow">Player</div>
+    <h2 style="margin-top: 0.4rem;">{{ player_name }}</h2>
+    <div class="row" style="gap: 1.2rem; margin-top: 0.8rem;">
+      <div><span class="eyebrow">Score</span> <span class="mono accent" id="my-score" style="font-size: 1.1rem;">—</span></div>
+      <div><span class="eyebrow">Rank</span> <span class="mono accent" id="my-rank" style="font-size: 1.1rem;">—</span></div>
+      <div><span class="eyebrow">Round</span> <span class="mono accent" id="my-round" style="font-size: 1.1rem;">—</span></div>
+    </div>
+  </section>
+
+  <div id="content"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TID = "{{ tid }}";
+const PID = "{{ pid }}";
+const MYNAME = "{{ player_name }}";
+
+const content = document.getElementById('content');
+content.innerHTML = EP.loaderHtml('Loading your match');
+
+function render(state) {
+  const t = state.tournament;
+  const me = (state.players || []).find(p => p.id === PID);
+  const players = state.players || [];
+  const rank = players.findIndex(p => p.id === PID) + 1;
+  document.getElementById('my-score').textContent = me ? EP.formatScore(me.score) : '—';
+  document.getElementById('my-rank').textContent = rank ? `#${rank} / ${players.length}` : '—';
+  document.getElementById('my-round').textContent = t.current_round || '—';
+
+  const matches = (state.current_matches || []).filter(
+    m => m.white_player_id === PID || m.black_player_id === PID
+  );
+
+  if (t.status === 'finished') {
+    content.innerHTML = `
+      <div class="card card-elevated" style="text-align:center;">
+        <div class="eyebrow" style="margin-bottom: 1rem;">Tournament finished</div>
+        <h2 style="font-size: 2rem;">You finished #${rank} / ${players.length}</h2>
+        <p class="muted" style="margin-top: 1rem;">Final score: <span class="accent mono">${EP.formatScore(me?.score || 0)}</span></p>
+      </div>
+    `;
+    return;
+  }
+
+  if (matches.length === 0) {
+    content.innerHTML = `
+      <div class="card" style="text-align:center;">
+        <div style="font-size: 2rem; margin-bottom: 0.6rem;">⏳</div>
+        <h3>Waiting for round ${t.current_round + 1} pairings</h3>
+        <p class="muted" style="margin-top: 0.5rem;">Hang tight — the host will start the next round soon.</p>
+      </div>
+    `;
+    return;
+  }
+
+  // Show each match (usually one)
+  content.innerHTML = matches.map(renderMatch).join('');
+}
+
+function renderMatch(m) {
+  const isWhite = m.white_player_id === PID;
+  const oppName = isWhite ? m.black_name : m.white_name;
+  const myColor = isWhite ? 'white' : 'black';
+  const oppColor = isWhite ? 'black' : 'white';
+
+  if (m.status === 'bye') {
+    return `
+      <div class="card card-elevated" style="text-align:center;">
+        <div class="badge badge-bye" style="margin-bottom: 1rem;">Bye</div>
+        <h3>You have a bye this round</h3>
+        <p class="muted" style="margin-top: 0.5rem;">You automatically get 1 point.</p>
+      </div>
+    `;
+  }
+
+  if (m.status === 'confirmed') {
+    const winText = m.result === 'draw' ? 'Drew with' :
+      ((m.result === 'white' && isWhite) || (m.result === 'black' && !isWhite)) ? `Beat` : `Lost to`;
+    return `
+      <div class="card">
+        <div class="row between" style="margin-bottom: 0.8rem;">
+          <span class="eyebrow">Round ${m.round_id ? '' : ''} · Board ${m.board_number}</span>
+          <span class="badge badge-confirmed">Confirmed</span>
+        </div>
+        <h3>${EP.escape(winText)} ${EP.escape(oppName)}</h3>
+        <p class="muted" style="margin-top: 0.3rem;">Waiting for the next round.</p>
+      </div>
+    `;
+  }
+
+  // Reported but unconfirmed
+  if (m.status === 'reported') {
+    const iReported = m.reported_by === PID;
+    if (iReported) {
+      const resultText = resultDescription(m.result, m.white_name, m.black_name);
+      return `
+        <div class="card">
+          <div class="row between" style="margin-bottom: 0.8rem;">
+            <span class="eyebrow">Board ${m.board_number}</span>
+            <span class="badge badge-reported">Reported · waiting on ${EP.escape(oppName)}</span>
+          </div>
+          <h3>You reported: ${EP.escape(resultText)}</h3>
+          <p class="muted" style="margin-top: 0.5rem;">${EP.escape(oppName)} needs to confirm on their phone.</p>
+          ${EP.loaderHtml('Waiting for confirmation')}
+        </div>
+      `;
+    } else {
+      // Opponent reported, I need to confirm
+      const resultText = resultDescription(m.result, m.white_name, m.black_name);
+      return `
+        <div class="card card-elevated" style="border-color: var(--gold);">
+          <div class="row between" style="margin-bottom: 0.8rem;">
+            <span class="eyebrow">Board ${m.board_number}</span>
+            <span class="badge badge-reported">Confirm result</span>
+          </div>
+          <h3>${EP.escape(oppName)} says: ${EP.escape(resultText)}</h3>
+          <p class="muted" style="margin: 0.6rem 0 1.4rem;">Is that right?</p>
+          <div class="row wrap" style="gap: 0.8rem;">
+            <button class="btn btn-primary" onclick="confirmResult('${m.id}', true)">✓ Confirm</button>
+            <button class="btn btn-danger" onclick="confirmResult('${m.id}', false)">✗ Dispute</button>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  if (m.status === 'disputed') {
+    return `
+      <div class="card" style="border-color: var(--rose);">
+        <div class="row between" style="margin-bottom: 0.8rem;">
+          <span class="eyebrow">Board ${m.board_number}</span>
+          <span class="badge badge-disputed">Disputed</span>
+        </div>
+        <h3>The result is disputed</h3>
+        <p class="muted" style="margin-top: 0.5rem;">The host will resolve this. Hang tight.</p>
+      </div>
+    `;
+  }
+
+  // Pending — no result reported yet
+  return `
+    <div class="card card-elevated">
+      <div class="row between" style="margin-bottom: 0.8rem;">
+        <span class="eyebrow">Board ${m.board_number}</span>
+        <span class="badge badge-pending">In progress</span>
+      </div>
+      <h3 style="margin-bottom: 1.5rem;">vs ${EP.escape(oppName)}</h3>
+      <p class="muted" style="margin-bottom: 0.4rem;">You play <strong style="color: var(--ink); text-transform: capitalize;">${myColor}</strong>. Opponent plays ${oppColor}.</p>
+      <p class="eyebrow" style="margin-top: 1.4rem; margin-bottom: 0.8rem;">When the game ends, tap the result:</p>
+      <div class="col" style="gap: 0.6rem;">
+        <button class="btn btn-primary btn-lg" onclick="reportResult('${m.id}', '${myColor}')">I won</button>
+        <button class="btn btn-lg" onclick="reportResult('${m.id}', 'draw')">We drew</button>
+        <button class="btn btn-lg btn-ghost" onclick="reportResult('${m.id}', '${oppColor}')">I lost</button>
+      </div>
+      <p class="faint" style="font-size: 0.82rem; margin-top: 1rem;">
+        Your opponent will be asked to confirm.
+      </p>
+    </div>
+  `;
+}
+
+function resultDescription(result, whiteName, blackName) {
+  if (result === 'draw') return 'Draw';
+  if (result === 'white') return `${whiteName} won`;
+  if (result === 'black') return `${blackName} won`;
+  return 'Unknown';
+}
+
+async function reportResult(matchId, result) {
+  try {
+    await EP.api('POST', `/api/tournaments/${TID}/matches/${matchId}/report`, {
+      player_id: PID, result,
+    });
+    EP.toast('Result reported. Waiting for your opponent.');
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  }
+}
+
+async function confirmResult(matchId, agree) {
+  try {
+    await EP.api('POST', `/api/tournaments/${TID}/matches/${matchId}/confirm`, {
+      player_id: PID, agree,
+    });
+    EP.toast(agree ? 'Confirmed.' : 'Disputed — host will resolve.');
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  }
+}
+
+window.reportResult = reportResult;
+window.confirmResult = confirmResult;
+
+// Initial fetch + WS subscribe
+EP.api('GET', `/api/tournaments/${TID}/state`).then(render).catch(err => {
+  content.innerHTML = `<div class="card"><h3>Couldn't load tournament</h3><p class="muted">${EP.escape(err.message)}</p></div>`;
+});
+
+EP.connectWs(TID, (msg) => {
+  if (msg.type === 'state') {
+    render(msg.data);
+    if (msg.event && msg.event.kind === 'round_start') {
+      EP.toast(`Round ${msg.event.round} pairings posted!`);
+      if (navigator.vibrate) navigator.vibrate(100);
+    }
+  }
+});
+</script>
+{% endblock %}

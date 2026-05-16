@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}EnPassant · Live chess tournaments{% endblock %}
+
+{% block content %}
+<div class="page">
+  <header class="row between" style="margin-bottom: 4vh;">
+    <div class="brand">
+      <span>en</span><span class="brand-dot"></span><span class="accent">passant</span>
+    </div>
+    <div class="eyebrow">v1 · live tournament app</div>
+  </header>
+
+  <section class="hero" style="margin-bottom: 4vh;">
+    <div class="eyebrow" style="margin-bottom: 1.2rem;">For the room · not the spreadsheet</div>
+    <h1 style="margin-bottom: 1.5rem; max-width: 14ch;">
+      Chess tournaments<br>
+      <em style="font-style: italic; color: var(--lime);">that move.</em>
+    </h1>
+    <p style="font-family: var(--font-display); font-size: clamp(1.1rem, 1.6vw, 1.4rem); color: var(--ink-mute); max-width: 56ch; line-height: 1.45;">
+      Project the leaderboard on the wall. Players confirm their own results from
+      their phones. Watch ranks climb live as games end. No more host scribbling
+      on paper.
+    </p>
+  </section>
+
+  <section class="row wrap" style="gap: 1.5rem; align-items: stretch; margin-bottom: 4vh;">
+    <div class="card card-elevated" style="flex: 1 1 360px; min-width: 320px;">
+      <div class="eyebrow" style="margin-bottom: 1rem;">→ Create a tournament</div>
+      <form id="create-form" class="col" style="gap: 1.2rem;">
+        <div>
+          <label for="tname">Tournament name</label>
+          <input type="text" id="tname" required maxlength="60" placeholder="e.g. School Friday Blitz">
+        </div>
+        <div>
+          <label>Pairing mode</label>
+          <div class="segmented" role="radiogroup">
+            <input type="radio" name="mode" id="m-swiss" value="swiss" checked>
+            <label for="m-swiss">Swiss</label>
+            <input type="radio" name="mode" id="m-random" value="random">
+            <label for="m-random">Random</label>
+            <input type="radio" name="mode" id="m-manual" value="manual">
+            <label for="m-manual">Manual</label>
+          </div>
+          <div class="faint" style="font-size: 0.82rem; margin-top: 0.5rem;" id="mode-hint">
+            Swiss pairs by score group: 1 vs 33, 2 vs 34… Best for competitive events.
+          </div>
+        </div>
+        <button class="btn btn-primary btn-lg" type="submit">Create tournament →</button>
+      </form>
+    </div>
+
+    <div class="card" style="flex: 1 1 360px; min-width: 320px;">
+      <div class="eyebrow" style="margin-bottom: 1rem;">→ Join an existing one</div>
+      <form id="join-form" class="col" style="gap: 1.2rem;">
+        <div>
+          <label for="tcode">Tournament code</label>
+          <input type="text" id="tcode" maxlength="6" style="text-transform: uppercase; letter-spacing: 0.3em; font-family: var(--font-mono); font-size: 1.4rem;" placeholder="A4K2P9">
+        </div>
+        <button class="btn btn-lg" type="submit">Join →</button>
+      </form>
+      <p class="faint" style="font-size: 0.85rem; margin: 1.2rem 0 0;">
+        Or scan the QR code at your venue.
+      </p>
+    </div>
+  </section>
+
+  <section style="margin-top: 5vh;">
+    <div class="eyebrow" style="margin-bottom: 1.5rem;">What you get</div>
+    <div class="row wrap" style="gap: 1rem; align-items: stretch;">
+      <div class="card" style="flex: 1 1 220px;">
+        <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">📺</div>
+        <h3 style="margin-bottom: 0.4rem;">Projector mode</h3>
+        <p class="muted" style="font-size: 0.9rem; line-height: 1.5;">Cast a live, animated leaderboard to a TV. Ranks slide as results come in.</p>
+      </div>
+      <div class="card" style="flex: 1 1 220px;">
+        <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">✓</div>
+        <h3 style="margin-bottom: 0.4rem;">Dual confirmation</h3>
+        <p class="muted" style="font-size: 0.9rem; line-height: 1.5;">One player reports, the opponent confirms. Disputes go to the host.</p>
+      </div>
+      <div class="card" style="flex: 1 1 220px;">
+        <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">⚡</div>
+        <h3 style="margin-bottom: 0.4rem;">QR-code join</h3>
+        <p class="muted" style="font-size: 0.9rem; line-height: 1.5;">No accounts. Players scan, type their name, they're in.</p>
+      </div>
+      <div class="card" style="flex: 1 1 220px;">
+        <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">♞</div>
+        <h3 style="margin-bottom: 0.4rem;">Three pairing modes</h3>
+        <p class="muted" style="font-size: 0.9rem; line-height: 1.5;">Swiss, Random, or fully Manual — pick per round.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="row between" style="margin-top: 6vh; padding-top: 2vh; border-top: 1px solid var(--line); color: var(--ink-faint); font-size: 0.85rem;">
+    <span>EnPassant · built for school clubs and chess nights</span>
+    <span class="mono">♟ → diagonal capture</span>
+  </footer>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const modeHints = {
+  swiss: 'Swiss pairs by score group: 1 vs 33, 2 vs 34… Best for competitive events.',
+  random: 'Random pairs players each round. Great for casual or quick events.',
+  manual: "You'll create each pairing by hand from the host dashboard.",
+};
+document.querySelectorAll('input[name=mode]').forEach(r => {
+  r.addEventListener('change', () => {
+    document.getElementById('mode-hint').textContent = modeHints[r.value];
+  });
+});
+
+document.getElementById('create-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = document.getElementById('tname').value.trim();
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  if (!name) return;
+  try {
+    const t = await EP.api('POST', '/api/tournaments', { name, pairing_mode: mode });
+    // Send host to their dashboard with the host token
+    location.href = `/host/${t.id}?token=${encodeURIComponent(t.host_token)}`;
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  }
+});
+
+document.getElementById('join-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const code = document.getElementById('tcode').value.trim().toUpperCase();
+  if (!code) return;
+  // Verify it exists, then redirect to join page
+  try {
+    await EP.api('GET', `/api/tournaments/${code}`);
+    location.href = `/join/${code}`;
+  } catch (err) {
+    EP.toast('Tournament not found.', 'error');
+  }
+});
+</script>
+{% endblock %}

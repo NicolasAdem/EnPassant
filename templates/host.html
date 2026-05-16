@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+{% block title %}Host · {{ tournament_name }}{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 1180px;">
+  <header class="row between wrap" style="margin-bottom: 3vh; gap: 1rem;">
+    <div>
+      <a href="/" class="brand" style="text-decoration: none; color: inherit;">
+        <span>en</span><span class="brand-dot"></span><span class="accent">passant</span>
+      </a>
+      <div class="eyebrow" style="margin-top: 0.4rem;">Host dashboard</div>
+    </div>
+    <div style="text-align: right;">
+      <h2 style="font-size: 1.6rem;">{{ tournament_name }}</h2>
+      <div class="row" style="gap: 0.8rem; margin-top: 0.5rem; justify-content: flex-end;">
+        <span class="mono accent" style="letter-spacing: 0.2em; font-size: 1.05rem;">{{ tid }}</span>
+        <a href="/projector/{{ tid }}" target="_blank" class="btn btn-ghost" style="padding: 0.35rem 0.8rem; font-size: 0.85rem;">📺 Projector view ↗</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Stats bar -->
+  <div class="row wrap" style="gap: 1rem; margin-bottom: 2.5vh;">
+    <div class="card" style="flex: 1 1 160px; min-width: 140px;">
+      <div class="eyebrow">Players</div>
+      <div style="font-family: var(--font-display); font-size: 2.2rem; font-weight: 600; color: var(--lime); margin-top: 0.4rem;" id="stat-players">0</div>
+    </div>
+    <div class="card" style="flex: 1 1 160px; min-width: 140px;">
+      <div class="eyebrow">Round</div>
+      <div style="font-family: var(--font-display); font-size: 2.2rem; font-weight: 600; color: var(--lime); margin-top: 0.4rem;" id="stat-round">—</div>
+    </div>
+    <div class="card" style="flex: 1 1 160px; min-width: 140px;">
+      <div class="eyebrow">Pending matches</div>
+      <div style="font-family: var(--font-display); font-size: 2.2rem; font-weight: 600; color: var(--lime); margin-top: 0.4rem;" id="stat-pending">—</div>
+    </div>
+    <div class="card" style="flex: 1 1 160px; min-width: 140px;">
+      <div class="eyebrow">Disputes</div>
+      <div style="font-family: var(--font-display); font-size: 2.2rem; font-weight: 600; color: var(--rose); margin-top: 0.4rem;" id="stat-disputes">0</div>
+    </div>
+  </div>
+
+  <!-- Main grid -->
+  <div class="row wrap" style="gap: 1.5rem; align-items: flex-start;">
+    <!-- Left column -->
+    <div class="col" style="flex: 1 1 320px; min-width: 300px; max-width: 380px;">
+
+      <!-- QR / join info -->
+      <div class="card card-elevated" id="join-card">
+        <div class="eyebrow" style="margin-bottom: 0.8rem;">Players join here</div>
+        <div style="background: white; padding: 12px; border-radius: 8px; display: inline-block;">
+          <img src="/api/tournaments/{{ tid }}/qrcode.png" alt="Join QR" style="display: block; width: 180px; height: 180px;">
+        </div>
+        <div style="margin-top: 1rem;">
+          <div class="muted" style="font-size: 0.85rem; margin-bottom: 0.3rem;">Or share this code:</div>
+          <div class="tcode" style="font-size: 1.5rem;">{{ tid }}</div>
+        </div>
+        <div style="margin-top: 0.8rem;">
+          <div class="muted" style="font-size: 0.82rem; margin-bottom: 0.3rem;">Or this link:</div>
+          <code style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--moss); word-break: break-all;" id="join-link"></code>
+        </div>
+      </div>
+
+      <!-- Round controls -->
+      <div class="card card-elevated">
+        <div class="eyebrow" style="margin-bottom: 1rem;">Round control</div>
+        <div>
+          <label>Pairing mode for next round</label>
+          <div class="segmented" role="radiogroup">
+            <input type="radio" name="rmode" id="r-swiss" value="swiss" checked>
+            <label for="r-swiss">Swiss</label>
+            <input type="radio" name="rmode" id="r-random" value="random">
+            <label for="r-random">Random</label>
+            <input type="radio" name="rmode" id="r-manual" value="manual">
+            <label for="r-manual">Manual</label>
+          </div>
+        </div>
+        <button id="btn-start-round" class="btn btn-primary btn-lg" style="margin-top: 1.2rem; width: 100%;">
+          Start round →
+        </button>
+        <button id="btn-end-tournament" class="btn btn-danger" style="margin-top: 0.6rem; width: 100%;">
+          End tournament
+        </button>
+      </div>
+
+      <!-- Manual match builder (only shown in manual mode) -->
+      <div class="card" id="manual-card" style="display: none;">
+        <div class="eyebrow" style="margin-bottom: 1rem;">Add match manually</div>
+        <div>
+          <label>White</label>
+          <select id="manual-white"></select>
+        </div>
+        <div style="margin-top: 0.8rem;">
+          <label>Black <span style="text-transform: none; color: var(--ink-faint); letter-spacing: 0;">(or leave empty for a bye)</span></label>
+          <select id="manual-black">
+            <option value="">— Bye —</option>
+          </select>
+        </div>
+        <button id="btn-add-match" class="btn" style="margin-top: 1rem; width: 100%;">Add match</button>
+      </div>
+    </div>
+
+    <!-- Right column: live state -->
+    <div class="col" style="flex: 2 1 500px; min-width: 320px;">
+      <div class="card">
+        <div class="row between" style="margin-bottom: 1rem;">
+          <h3>Standings</h3>
+          <span class="muted mono" style="font-size: 0.85rem;" id="standings-count">0 players</span>
+        </div>
+        <div id="standings"></div>
+      </div>
+
+      <div class="card">
+        <div class="row between" style="margin-bottom: 1rem;">
+          <h3>Current round</h3>
+          <span class="muted mono" style="font-size: 0.85rem;" id="round-info">Not started</span>
+        </div>
+        <div id="matches"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-bottom: 1rem;">Activity</h3>
+        <div id="activity" style="font-size: 0.92rem;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TID = "{{ tid }}";
+const TOKEN = "{{ token }}";
+
+document.getElementById('join-link').textContent = `${location.origin}/join/${TID}`;
+
+let LATEST_STATE = null;
+
+function render(state) {
+  LATEST_STATE = state;
+  const t = state.tournament;
+  const players = state.players || [];
+  const matches = state.current_matches || [];
+
+  // Stats
+  document.getElementById('stat-players').textContent = players.length;
+  document.getElementById('stat-round').textContent = t.current_round || '—';
+  const pending = matches.filter(m => m.status !== 'confirmed' && m.status !== 'bye').length;
+  document.getElementById('stat-pending').textContent = matches.length ? pending : '—';
+  const disputes = matches.filter(m => m.status === 'disputed').length;
+  document.getElementById('stat-disputes').textContent = disputes;
+
+  // Standings
+  document.getElementById('standings-count').textContent = `${players.length} players`;
+  document.getElementById('standings').innerHTML = renderStandings(players, t);
+
+  // Matches
+  document.getElementById('round-info').textContent =
+    t.current_round ? `Round ${t.current_round}` : 'Not started';
+  document.getElementById('matches').innerHTML = renderMatches(matches);
+
+  // Activity feed
+  document.getElementById('activity').innerHTML = renderActivity(state.events || []);
+
+  // Manual mode UI
+  const mode = document.querySelector('input[name=rmode]:checked').value;
+  toggleManualCard(mode, players);
+
+  // Tournament finished?
+  if (t.status === 'finished') {
+    document.getElementById('btn-start-round').disabled = true;
+    document.getElementById('btn-start-round').textContent = 'Tournament finished';
+  }
+}
+
+function renderStandings(players, t) {
+  if (!players.length) {
+    return '<p class="muted">No players yet. Share the QR code or tournament code.</p>';
+  }
+  return `
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.92rem;">
+      <thead>
+        <tr style="text-align: left; color: var(--ink-mute); font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase;">
+          <th style="padding: 0.5rem 0.4rem; width: 40px;">#</th>
+          <th style="padding: 0.5rem 0.4rem;">Player</th>
+          <th style="padding: 0.5rem 0.4rem; text-align: right;">ELO</th>
+          <th style="padding: 0.5rem 0.4rem; text-align: right;">Score</th>
+          <th style="padding: 0.5rem 0.4rem; text-align: right;">Buchholz</th>
+          <th style="padding: 0.5rem 0.4rem;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${players.map((p, i) => `
+          <tr style="border-top: 1px solid var(--line);">
+            <td style="padding: 0.6rem 0.4rem; font-family: var(--font-mono); color: ${i === 0 ? 'var(--gold)' : 'var(--ink-mute)'};">${i + 1}</td>
+            <td style="padding: 0.6rem 0.4rem; font-weight: 500;">${EP.escape(p.name)}</td>
+            <td style="padding: 0.6rem 0.4rem; text-align: right; font-family: var(--font-mono); color: var(--ink-faint); font-size: 0.85rem;">${p.elo}</td>
+            <td style="padding: 0.6rem 0.4rem; text-align: right; font-family: var(--font-mono); color: var(--lime); font-weight: 600;">${EP.formatScore(p.score)}</td>
+            <td style="padding: 0.6rem 0.4rem; text-align: right; font-family: var(--font-mono); color: var(--ink-faint); font-size: 0.85rem;">${EP.formatScore(p.buchholz)}</td>
+            <td style="padding: 0.6rem 0.4rem; text-align: right;">
+              ${t.status === 'lobby' ? `<button class="btn btn-ghost" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="removePlayer('${p.id}', '${EP.escape(p.name).replace(/'/g, "\\'")}')">×</button>` : ''}
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderMatches(matches) {
+  if (!matches.length) {
+    return '<p class="muted">No matches in progress. Start a round when ready.</p>';
+  }
+  return matches.map(m => {
+    if (m.status === 'bye') {
+      return `
+        <div class="row between" style="padding: 0.7rem 0.4rem; border-top: 1px solid var(--line); align-items: center;">
+          <div class="row" style="gap: 0.8rem; align-items: center;">
+            <span class="mono faint">${m.board_number}</span>
+            <span><strong>${EP.escape(m.white_name)}</strong> <span class="faint">— bye</span></span>
+          </div>
+          <span class="badge badge-bye">Bye</span>
+        </div>
+      `;
+    }
+    const statusBadge = {
+      pending: '<span class="badge badge-pending">In progress</span>',
+      reported: '<span class="badge badge-reported">Reported</span>',
+      confirmed: '<span class="badge badge-confirmed">Confirmed</span>',
+      disputed: '<span class="badge badge-disputed">⚠ Disputed</span>',
+    }[m.status] || '';
+
+    let resultText = '';
+    if (m.result === 'white') resultText = `<span class="faint mono" style="margin-left: 0.5rem;">${EP.escape(m.white_name)} won</span>`;
+    if (m.result === 'black') resultText = `<span class="faint mono" style="margin-left: 0.5rem;">${EP.escape(m.black_name)} won</span>`;
+    if (m.result === 'draw') resultText = `<span class="faint mono" style="margin-left: 0.5rem;">Draw</span>`;
+
+    let actions = '';
+    if (m.status === 'disputed' || m.status === 'reported') {
+      actions = `
+        <div class="row" style="gap: 0.4rem; margin-top: 0.6rem; flex-wrap: wrap;">
+          <span class="eyebrow" style="font-size: 0.65rem; align-self: center;">Override:</span>
+          <button class="btn btn-ghost" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;" onclick="hostResolve('${m.id}', 'white')">${EP.escape(m.white_name)} wins</button>
+          <button class="btn btn-ghost" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;" onclick="hostResolve('${m.id}', 'draw')">Draw</button>
+          <button class="btn btn-ghost" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;" onclick="hostResolve('${m.id}', 'black')">${EP.escape(m.black_name)} wins</button>
+        </div>
+      `;
+    }
+
+    return `
+      <div style="padding: 0.8rem 0.4rem; border-top: 1px solid var(--line);">
+        <div class="row between" style="align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+          <div class="row" style="gap: 0.8rem; align-items: center;">
+            <span class="mono faint">${m.board_number}</span>
+            <span><strong>○ ${EP.escape(m.white_name)}</strong> <span class="faint">vs</span> <strong>● ${EP.escape(m.black_name)}</strong></span>
+            ${resultText}
+          </div>
+          ${statusBadge}
+        </div>
+        ${actions}
+      </div>
+    `;
+  }).join('');
+}
+
+function renderActivity(events) {
+  if (!events.length) return '<p class="muted">Activity will show here once the tournament begins.</p>';
+  return events.slice(0, 12).map(ev => {
+    const time = ev.created_at ? new Date(ev.created_at + 'Z').toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '';
+    const colorByKind = {
+      result: 'var(--lime)',
+      join: 'var(--moss)',
+      round_start: 'var(--gold)',
+      dispute: 'var(--rose)',
+      tournament_end: 'var(--ink-mute)',
+      tournament_created: 'var(--ink-mute)',
+    }[ev.kind] || 'var(--ink-mute)';
+    return `
+      <div class="row" style="gap: 0.8rem; padding: 0.4rem 0; align-items: baseline;">
+        <span class="mono faint" style="font-size: 0.78rem; min-width: 50px;">${time}</span>
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: ${colorByKind}; flex-shrink: 0;"></span>
+        <span>${EP.escape(ev.message)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleManualCard(mode, players) {
+  const card = document.getElementById('manual-card');
+  if (mode === 'manual') {
+    card.style.display = 'block';
+    const whiteSel = document.getElementById('manual-white');
+    const blackSel = document.getElementById('manual-black');
+    const opts = players.map(p => `<option value="${p.id}">${EP.escape(p.name)} (${EP.formatScore(p.score)} pts)</option>`).join('');
+    whiteSel.innerHTML = opts;
+    blackSel.innerHTML = '<option value="">— Bye —</option>' + opts;
+  } else {
+    card.style.display = 'none';
+  }
+}
+
+async function startRound() {
+  const mode = document.querySelector('input[name=rmode]:checked').value;
+  const btn = document.getElementById('btn-start-round');
+  btn.disabled = true;
+  btn.textContent = 'Starting…';
+  try {
+    if (mode === 'manual') {
+      // For manual, we don't auto-pair; we just open the round (or do nothing — it opens on first manual match)
+      // Try start_round with manual to open an empty round
+      await EP.api('POST', `/api/tournaments/${TID}/rounds?host_token=${encodeURIComponent(TOKEN)}`, { mode_override: 'manual' });
+    } else {
+      await EP.api('POST', `/api/tournaments/${TID}/rounds?host_token=${encodeURIComponent(TOKEN)}`, { mode_override: mode });
+    }
+    EP.toast('Round started!');
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Start round →';
+  }
+}
+
+async function endTournament() {
+  if (!confirm('End the tournament? Players will see final standings.')) return;
+  try {
+    await EP.api('POST', `/api/tournaments/${TID}/end?host_token=${encodeURIComponent(TOKEN)}`);
+    EP.toast('Tournament ended.');
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  }
+}
+
+async function removePlayer(pid, name) {
+  if (!confirm(`Remove ${name}?`)) return;
+  try {
+    await EP.api('DELETE', `/api/tournaments/${TID}/players/${pid}?host_token=${encodeURIComponent(TOKEN)}`);
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  }
+}
+
+async function hostResolve(mid, result) {
+  try {
+    await EP.api('POST', `/api/tournaments/${TID}/matches/${mid}/resolve?host_token=${encodeURIComponent(TOKEN)}`, { result });
+    EP.toast('Match resolved.');
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  }
+}
+
+async function addManualMatch() {
+  const w = document.getElementById('manual-white').value;
+  const b = document.getElementById('manual-black').value || null;
+  if (!w) { EP.toast('Pick a white player.', 'error'); return; }
+  if (w === b) { EP.toast('A player cannot play themselves.', 'error'); return; }
+  try {
+    await EP.api('POST', `/api/tournaments/${TID}/matches/manual?host_token=${encodeURIComponent(TOKEN)}`, {
+      white_player_id: w, black_player_id: b,
+    });
+    EP.toast('Match added.');
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  }
+}
+
+window.removePlayer = removePlayer;
+window.hostResolve = hostResolve;
+
+document.getElementById('btn-start-round').addEventListener('click', startRound);
+document.getElementById('btn-end-tournament').addEventListener('click', endTournament);
+document.getElementById('btn-add-match').addEventListener('click', addManualMatch);
+document.querySelectorAll('input[name=rmode]').forEach(r => {
+  r.addEventListener('change', () => {
+    if (LATEST_STATE) toggleManualCard(r.value, LATEST_STATE.players || []);
+  });
+});
+
+// Initial load + WS
+EP.api('GET', `/api/tournaments/${TID}/state`).then(render).catch(err => {
+  EP.toast(err.message, 'error');
+});
+EP.connectWs(TID, (msg) => {
+  if (msg.type === 'state') {
+    render(msg.data);
+    if (msg.event && msg.event.kind === 'dispute') {
+      EP.toast('⚠ A dispute requires your attention.', 'error');
+    }
+  }
+});
+</script>
+{% endblock %}

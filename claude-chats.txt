@@ -1,0 +1,56 @@
+We're going to work on some kind of chess algorithm for a friend's school. The goal is simple: we must find something that doesn't really exist yet or does exist but is shitty, and build something better. What we want to build is some kind of web app using Python backend and HTML frontend that lets people play chess tournaments (offline, nothing to do with us) and enter their scores manually so that the tournament ranking of the host gets automatically updated. The issue we're trying to solve is everyone walking to the host and saying 'this guy vs this guy won so much this score' and the host scrabbling with his paper, now being able to look on his app to a live score, animated, that can be projected in the room as well. We also want to include some space to do the randomized player competitions to have an arbitrary opponent (or we use the Swiss system in which a competition of e.g.  64 players has competitions between the highest ELO vs the 33rd and then second highest 34 and so forth), but I want the host to be able to choose between these two options to set up the tournament and also one manual option. I want this app to contain a dark mode and be green from design, and for the rest I believe it's important that, before we get started coding, to do research on what already exists and what our unique thing is. We already have been thinking about the other player having to confirm the final score on a notification on their part of the website, but again, we can do whatever we want here. I want to be unique and creative and build something extraordinary that people can and will actually use. Do the research for me and then we can get started coding. Explain the concept in easy words very shortly what you believe is best for this project. Also invent a creative name.
+
+Show less
+11:02 PM
+I'll research what's already out there in the chess tournament management space, then come back with recommendations on how to make yours stand out.
+
+
+Searched the web
+Searched the web
+Good overview already. Let me dig into the specific niches and gaps — especially around live projection, animations, and player-confirmed scoring, since those are your differentiators.
+
+
+Searched the web
+Searched the web
+I have enough to give you a clear picture. Let me lay it out.
+
+What's already out there
+The chess tournament management space is actually pretty crowded — but most of it falls into two camps that both leave a real gap in the middle.
+
+The "professional arbiter" camp — Swiss-Manager, Vega, WinTD, ChessManager, Tornelo. These are FIDE-compliant, do the math correctly, and tournament directors love them. They also look like Windows 98, have steep learning curves, cost money, and treat live spectator experience as an afterthought. Score entry is the director typing things into a desktop app while players queue up at their table.
+
+The "modern but online-first" camp — Chess.com tournaments, Lichess Arena, Chess Nut, ChessHost. Sleek, mobile-friendly, easy to share. But Chess.com and Lichess assume games are played on their platform, not over a real board. Chess Nut and ChessHost are the closest competitors to what you're describing — they handle live standings for in-person events — but from what I read, they're still "director enters result" tools. Players don't confirm anything; there's no broadcast-quality projector view; no animation when someone climbs the leaderboard.
+
+The specific gaps I see, that match what you described:
+
+Player-side score confirmation. Almost nobody does this. The current norm is "director asks both players verbally, types it in." For scholastic events, national tournaments still use paper forms that both players sign physically. Doing this digitally — opponent gets a notification, taps confirm or dispute — is genuinely a fresh idea for in-person play.
+Projector / "stadium screen" mode. This barely exists for amateur tournaments. Lichess and Chess.com have broadcast views, but only for their own online games. For a school running an over-the-board event, the current solution is "refresh the standings page on a laptop." A purpose-built TV/projector view with smooth animated rank changes when results come in — that's the showpiece.
+Three-way pairing choice (Swiss / random / manual) in one tool. Most tools force you into Swiss. Some only do round-robin. The host being able to pick per-round is unusual.
+Your real differentiator (in one line)
+Everyone else builds for the director. You build for the room.
+
+The animated, projector-friendly live leaderboard plus the dual-confirmation score entry are the unique combo. That's what makes it feel like a live sports broadcast instead of a spreadsheet.
+
+Concept in plain words
+Host opens the app, creates a tournament, adds players (with optional ELO), picks a pairing mode for each round (Swiss / random / manual), and projects the Live Board on the wall. After a game, one player taps their result on their phone, the opponent gets a ping and confirms or disputes, and the second the result locks, the leaderboard on the projector re-sorts with a smooth animation — names sliding up and down, the new leader briefly highlighted. The host has an override for disputes. Dark mode and green-accented throughout. Built with FastAPI on the backend (clean, modern, async-friendly, with WebSocket support for the live updates, which you'll absolutely need) and plain HTML/CSS/JS on the frontend.
+
+A few things worth adding because they're cheap to build and make the app feel finished:
+
+QR-code join for players (ChessHost does this and it's genuinely the right pattern — no accounts, no typing names).
+Round timer on the projector view — adds drama, fills the screen between result updates.
+"Just happened" ticker at the bottom of the projector view — "Alice beat Bob, climbing from #7 to #3" — this is the kind of small thing nobody else does.
+Tiebreak handling — Swiss tournaments need Buchholz/Sonneborn-Berger to be taken seriously. We can implement the standard ones.
+Name
+A few options, from most to least serious:
+
+GambitLive — chess-y, evokes the live broadcast angle, easy to say.
+Rookery — chess pun on "rook," but also means a noisy gathering place. Memorable, weird in a good way.
+EnPassant — every chess player knows it, very recognizable, slight inside joke.
+Crown — short, projector-friendly as a logo, tournament-vibe.
+Castle&Co — friendlier, more school-club feeling.
+My pick: Rookery. It's distinctive, googlable (no name collisions in this space from what I saw), the logo can be a stylized rook, and it captures the "the whole club gathered around watching" energy that's your actual product.
+
+Ready to start when you are. Want me to sketch out the tech architecture and file structure as the next step, or jump straight into a working prototype?
+
+Let's start building EnPassant. Thanks so much for the research because now we are aware of what makes us unique. Let's get started coding, and make sure to keep everything in mind you've said in your last message, from the USP to the QR-code (and other features). Make it extremely user-friendly, straightforward, and an En Passant waiting animation :). Let's build somehting amazing. I know this is very likely going to be quite big, but we've got this.
+

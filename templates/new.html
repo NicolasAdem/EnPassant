@@ -26,10 +26,19 @@
           <input type="text" id="tname" required maxlength="60" placeholder="e.g. School Friday Blitz">
         </div>
         <div>
+          <label for="pcount">Expected number of players <span style="text-transform: none; color: var(--ink-faint); letter-spacing: 0;">(roughly)</span></label>
+          <input type="number" id="pcount" min="2" max="200" placeholder="e.g. 8">
+          <div class="faint" style="font-size: 0.82rem; margin-top: 0.5rem;" id="pcount-hint">
+            We'll recommend a pairing mode based on this. You can change it anytime.
+          </div>
+        </div>
+        <div>
           <label>Pairing mode</label>
           <div class="segmented" role="radiogroup">
             <input type="radio" name="mode" id="m-swiss" value="swiss" checked>
             <label for="m-swiss">Swiss</label>
+            <input type="radio" name="mode" id="m-rr" value="round_robin">
+            <label for="m-rr">Round-robin</label>
             <input type="radio" name="mode" id="m-random" value="random">
             <label for="m-random">Random</label>
             <input type="radio" name="mode" id="m-manual" value="manual">
@@ -50,14 +59,50 @@
 {% block scripts %}
 <script>
 const modeHints = {
-  swiss: 'Swiss pairs by score group: 1 vs 33, 2 vs 34… Best for competitive events.',
+  swiss: 'Swiss pairs by score group: 1 vs 33, 2 vs 34… Best for larger competitive events.',
+  round_robin: 'Round-robin: everyone plays everyone exactly once. Best for small groups (≤12).',
   random: 'Random pairs players each round. Great for casual or quick events.',
   manual: "You'll create each pairing by hand from the host dashboard.",
 };
-document.querySelectorAll('input[name=mode]').forEach(r => {
+const modeRadios = document.querySelectorAll('input[name=mode]');
+modeRadios.forEach(r => {
   r.addEventListener('change', () => {
     document.getElementById('mode-hint').textContent = modeHints[r.value];
   });
+});
+
+// Recommended-mode hint based on player count.
+// We only *suggest* — the host's explicit choice always wins.
+let userHasPickedMode = false;
+modeRadios.forEach(r => r.addEventListener('change', () => { userHasPickedMode = true; }));
+
+const pcountInput = document.getElementById('pcount');
+const pcountHint = document.getElementById('pcount-hint');
+pcountInput.addEventListener('input', () => {
+  const n = parseInt(pcountInput.value, 10);
+  if (!n || n < 2) {
+    pcountHint.textContent = "We'll recommend a pairing mode based on this. You can change it anytime.";
+    return;
+  }
+  let recommended, why;
+  if (n <= 12) {
+    recommended = 'round_robin';
+    why = `With ${n} players, round-robin gives everyone a game with everyone — ${n*(n-1)/2} games across ${n % 2 === 0 ? n-1 : n} rounds.`;
+  } else {
+    recommended = 'swiss';
+    const suggestedRounds = Math.ceil(Math.log2(n));
+    why = `With ${n} players, Swiss keeps it manageable — ~${suggestedRounds} rounds will produce a clear winner.`;
+  }
+  pcountHint.innerHTML = `<span class="accent">Recommended: ${recommended === 'round_robin' ? 'Round-robin' : 'Swiss'}.</span> ${why}`;
+
+  // Only auto-switch if the host hasn't explicitly picked a mode yet.
+  if (!userHasPickedMode) {
+    const radio = document.querySelector(`input[name=mode][value=${recommended}]`);
+    if (radio && !radio.checked) {
+      radio.checked = true;
+      document.getElementById('mode-hint').textContent = modeHints[recommended];
+    }
+  }
 });
 
 document.getElementById('create-form').addEventListener('submit', async (e) => {

@@ -149,6 +149,12 @@ def start_next_round(tid: str, mode_override: Optional[str] = None) -> Optional[
     past = list_past_matches(tid)
     pairings = pairing.generate_pairings(mode, players, past)
 
+    # If the pairing engine returns nothing, the tournament is logically over
+    # (most common with round-robin once the full schedule is exhausted, or
+    # manual mode at this stage). Don't silently create an empty round.
+    if not pairings and mode != "manual":
+        return {"error": "Tournament complete — no more rounds to play."}
+
     next_round_num = t["current_round"] + 1
     rid = _uuid()
     with db() as conn:

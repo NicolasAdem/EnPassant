@@ -641,3 +641,21 @@ label {
     margin-left: 0;
   }
 }
+
+/* ============================================================
+   Segmented control variant: allow wrapping when it doesn't fit
+   in a narrow column (e.g. host dashboard's 320px-wide column
+   trying to hold four options).
+   ============================================================ */
+
+.segmented.segmented-wrap {
+  flex-wrap: wrap;
+  /* When wrapped, give each label room to breathe */
+}
+.segmented.segmented-wrap label {
+  flex: 1 0 auto;
+  text-align: center;
+  /* Slightly tighter padding so 4 buttons stand a chance at fitting */
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+}

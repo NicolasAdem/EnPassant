@@ -7,26 +7,76 @@ Must-have for v1 to be honest about what it claims to do
    with the existing round-based model — zero schema changes. Verified with
    tests covering n=2 through n=16.
 
-[NEXT] 2. Friend's exact Swiss algorithm. The current pair_swiss works for
-   the easy cases but its rematch fallback is one swap. With many rounds in
-   a tight group, it'll produce duplicate pairings or float people who
-   shouldn't float. The pseudocode's swap-then-backtrack is the standard
-   correct approach. Invisible until it breaks — but when it breaks, it
-   breaks the tournament.
+[DONE] 2. Swiss algorithm — properly. The previous "done" claim was wrong:
+   stress-testing the n=16, 12-round white-wins config produced 21 emergency
+   byes across 8 rounds where players were dropped from pairings entirely.
+   Four bugs found and fixed in pairing.py:
+     a. _backtrack's worst-case baseline was list(top) instead of
+        list(group), so when no permutation beat the baseline, bottom-half
+        players silently vanished from the output.
+     b. The floater cascade only carried ONE player between score groups —
+        when a whole group's members had played each other, the rest got
+        emergency byes instead of floating down together.
+     c. _backtrack only permuted the bottom half, so within a group it
+        could never pair top[0] with top[1] even when that was the only
+        legal pairing. Replaced with _max_matching: a real maximum-matching
+        search over the full group, with _greedy_matching as fallback for
+        groups >14 players.
+     d. Per-group commitment could leave emergency byes when a tournament-
+        wide pairing existed. Added step 6: if the score-group cascade
+        leaves anyone unmatched, retry _pair_group on the whole pool. Only
+        fires when the cascade fails, so normal Swiss quality is preserved.
+
+   Verified: n=3 through n=32, up to 12 rounds, white-wins and all-draws.
+   Zero rematches, zero missing players, zero emergency byes except when
+   logically impossible (n=3 with 5 rounds — only 3 unique pairs exist).
+   Brute-force optimality check (check_optimality.py) confirms no emergency
+   bye is emitted when a perfect matching exists. ~14ms total for n=32, 12
+   rounds. Test files: test_swiss.py, check_optimality.py, test_quality.py.
 
 Should-have before showing this to a real club
 
-[TODO] 3. End-to-end check: QR join + live ticker. Both are in the README
-   as differentiators. The projector template has the QR overlay and ticker
-   rendering; we haven't yet verified the player flow actually completes
-   from a phone scan, or whether the ticker has anything to display. If
-   either is half-built, it has to be finished before anything else — the
-   whole pitch falls apart otherwise.
+[DONE] 3. End-to-end check: QR join + live ticker. Audit + live verification
+   done — spun up the full stack, simulated a phone scan → join → report →
+   confirm, watched WebSocket traffic. The QR-join flow is sound: QR PNG
+   embeds /join/{tid}, the join form POSTs to /api/tournaments/{tid}/players,
+   localStorage persists the player id, redirects to /player/{tid}/{pid}.
+   The ticker is genuinely wired and produces output: _log_event writes
+   rows with autoincrement ids, get_state_snapshot includes them under
+   'events', the WS broadcast carries them, projector.html's renderTicker
+   dedupes by id and filters on result/round_start/join — all three kinds
+   actually arrive at the projector with correct messages.
 
-[TODO] 4. Buchholz + Sonneborn-Berger tiebreaks. Schema already has a
-   buchholz column. pairing.py has a calculate_buchholz function. So
-   Buchholz is half-done. Tournaments with ties at the top can't crown a
-   winner without these. Quick to finish.
+   Three bugs fixed in-passing:
+     a. api.py rejected 'round_robin' in both create_tournament and
+        start_round mode_override. The /new form has offered it since task
+        #1, and the recommended-mode hint auto-selects it for ≤12 players,
+        but the API would 400. Added to both allowed-mode tuples.
+     b. api.py QR endpoint used img.save(buf, format="PNG"). Works in
+        qrcode 8.x at runtime, but Pylance's stub doesn't know about it.
+        Switched to building a QRCode object explicitly and saving with a
+        positional arg, stable across qrcode versions. pyright now reports
+        0 errors / 0 warnings on api.py.
+     c. join.html's "already joined? redirect them in" check hit
+        /players/{id}/matches to verify the stored id, but that endpoint
+        returns 200 [] for any id (the SQL just finds zero rows). Stale
+        localStorage entries would redirect to a 404. Now checks
+        state.players for the id; clears the stale entry if not found.
+
+   Cosmetic: removed a dead `${m.round_id ? '' : ''}` ternary leftover in
+   player.html.
+
+   Not done but logged for later: projector.html's tickerSeenIds Set grows
+   unbounded. Negligible for a normal event; bound it or reset on
+   round_start if a projector tab ever spans multiple tournaments.
+
+[NEXT] 4. Buchholz + Sonneborn-Berger tiebreaks. Schema already has a
+   buchholz column. tournament.py has a _recompute_buchholz helper that
+   runs on every match finalization. So Buchholz is genuinely half-done
+   and used in ORDER BY for list_players. Need to add a sonneborn_berger
+   column + computation, expose both on the standings, and make sure the
+   projector leaderboard tooltip / host dashboard explains the tiebreak
+   when scores are tied at the top.
 
 [DONE] 5. Recommended-mode hint on /new. Shipped alongside #1 — a player-
    count field on the create page now suggests Round-robin (≤12) or Swiss
@@ -37,7 +87,9 @@ Nice-to-have, not blocking
 [TODO] 6. Bye handling polish. Current code: if everyone has had a bye,
    lowest-score gets it. That's fine. But a player can technically get two
    byes in a small tournament if you cycle through. Worth tightening but
-   not urgent.
+   not urgent. Note: the #2 rewrite improved this in practice (the global-
+   retry step prefers pairing leftover players over double-bye), but the
+   underlying rule in step 1 of pair_swiss is unchanged.
 
 [TODO] 7. On-site / off-site setting + table numbers. Useful for the chess-
    club case but cosmetic — the tournament works without it. Schema change
@@ -62,10 +114,12 @@ Polish, do last
     avoids three-in-a-row of one color. Edge case, school clubs won't
     notice.
 
-[TODO] 12. Player-side dispute UI. The schema has disputed status. We
-    haven't yet seen player.html to know whether the dispute flow exists.
-    If not, this becomes critical, not nice-to-have — it's part of the
-    USP.
+[DONE] 12. Player-side dispute UI. Verified during task #3 — player.html
+    renders both a "✓ Confirm" and "✗ Dispute" button when the opponent
+    has reported a result. Dispute hits /matches/{mid}/confirm with
+    agree=false; tournament.py sets status='disputed' and logs a 'dispute'
+    event; host can then resolve via /matches/{mid}/resolve. The flow is
+    complete.
 
 ---
 
@@ -86,6 +140,14 @@ Verified vs. the original pair_swiss (A/B comparison, "white always wins"
 stress test):
    - Old: produced duplicate pairings (rematches) under stress — 39 dupes
      in a 12-round 16-player simulation.
-   - New: zero duplicate pairings across all tested configs. Instead, when
-     no legal pairing exists for a player, an emergency bye is awarded —
-     a visible signal to the host instead of a silent rematch.
+   - Intermediate (the version that was claimed "done"): zero rematches
+     but achieved this by silently dropping players from rounds and
+     emitting emergency byes — 21 emergency byes plus 8 rounds with
+     missing players in the same 12-round 16-player simulation. The
+     "zero duplicate pairings" claim was technically true but misleading;
+     the algorithm was just refusing to pair instead.
+   - Current (after #2 rewrite): zero duplicates AND zero emergency byes
+     AND zero missing players across all tested configs (n=3 through
+     n=32, up to 12 rounds, white-wins and all-draws scenarios). When an
+     emergency bye is genuinely unavoidable (n=3 over many rounds), the
+     algorithm distributes byes fairly.

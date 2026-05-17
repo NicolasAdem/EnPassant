@@ -81,18 +81,28 @@ def pair_swiss(players: List[dict], past_matches: List[dict]) -> List[dict]:
          hasn't had one yet. The bye is worth 1 point.
       2. Sort remaining players by score desc, ELO desc.
       3. Group by score.
-      4. For each group (high → low): prepend any floater from the previous
-         group, then pair within the group via:
+      4. For each group (high → low): merge in any floaters from previous
+         groups (they had higher scores so they sit at the top), re-sort,
+         then pair within the group via:
              a. _try_fold(): top half vs bottom half with intra-group swap
                 attempts when fold would produce a rematch.
-             b. _backtrack(): if fold + swaps still leaves players unpaired,
-                try permutations of the bottom half to find the pairing with
-                the fewest unpaired players.
-         Anyone still unpaired becomes a floater to the next group.
-      5. If a floater remains at the very end, they get a bye (only valid
-         if step 1 didn't already award one; if it did, we can't award two
-         so we pair the floater with someone — should not happen in practice
-         because step 1 guarantees an even number after the bye is removed).
+             b. _max_matching(): if fold + swaps still leaves players
+                unpaired, run a real maximum-matching search that considers
+                all legal pairs within the group, not just half-vs-half.
+                Falls back to a constrained-first greedy for groups >14.
+         Anyone unpaired floats down to the next group. Multiple floaters
+         are carried — necessary when a whole score group's natural opponents
+         have already played each other, which happens routinely with small
+         score groups in late rounds.
+      5. If any floaters remain after the last group: a single floater takes
+         the round's bye if one wasn't already assigned. Multiple floaters
+         are first paired against each other (different score levels and
+         match histories often make this possible).
+      6. If anyone is still unmatched after step 5, retry the whole pool as
+         one big group via _pair_group. This sacrifices some Swiss "quality"
+         (like-against-like score pairings) to ensure everyone gets a game
+         when a tournament-wide matching exists. Only invoked when steps 4–5
+         fail, so quality is unaffected for normal cases.
 
     Players: dicts with id, name, score, elo.
     past_matches: prior matches in the tournament. Used for rematch avoidance
@@ -122,53 +132,60 @@ def pair_swiss(players: List[dict], past_matches: List[dict]) -> List[dict]:
     score_groups = sorted(by_score.keys(), reverse=True)
 
     # --- Step 4: pair each group, cascading floaters down ---
-    # Second element is Optional[dict]: when it's None, the first element
-    # is getting an emergency bye (no legal opponent left, very rare).
+    # Multiple unpaired players can float down — necessary when an entire
+    # score-group's natural opponents have already played each other (common
+    # mid-tournament when score groups are small).
     paired_so_far: List[Tuple[dict, Optional[dict]]] = []
-    floater: Optional[dict] = None
+    floaters: List[dict] = []
 
     for score in score_groups:
-        group = list(by_score[score])
-        if floater is not None:
-            # Floater enters the next group at the top (it has a higher score
-            # than the group it's joining), so it's likely to be in `top`.
-            group.insert(0, floater)
-            floater = None
+        # Merge floaters from above (they have higher scores than this group).
+        # Re-sort so the merged group is still score-desc, ELO-desc — this
+        # keeps _try_fold's top/bottom split sensible.
+        group = floaters + list(by_score[score])
+        group.sort(key=lambda p: (-p["score"], -p["elo"]))
+        floaters = []
 
-        # If the group is now odd, the LOWEST player floats down.
-        # (Pseudocode: bottom of `top` becomes floater. With our sort that's
-        # the last element of the group.)
-        local_floater: Optional[dict] = None
+        # If the merged group is odd, drop the lowest-rated player down so
+        # _pair_group sees an even-sized group.
         if len(group) % 2 == 1:
-            local_floater = group.pop()
+            floaters.append(group.pop())  # lowest by sort order
 
         paired, unpaired = _pair_group(group, past_matches)
         paired_so_far.extend(paired)
+        floaters.extend(unpaired)
 
-        # Anyone unpaired floats down too. We can only carry one floater
-        # cleanly between groups; if `_pair_group` left more than one
-        # unpaired we promote one and award byes to the rest (rare,
-        # signals a heavily-conflicted history).
-        carry_down = []
-        if local_floater is not None:
-            carry_down.append(local_floater)
-        carry_down.extend(unpaired)
-        if carry_down:
-            floater = carry_down[0]
-            # Any extra unpaired players from this group cannot be paired
-            # later (no one else to face them), so they get an emergency
-            # bye. This is a graceful degradation, not a normal path.
-            for extra in carry_down[1:]:
-                paired_so_far.append((extra, None))  # marker: unpaired bye
-
-    # --- Step 5: handle any leftover floater at the end ---
-    if floater is not None:
-        if bye_player is None:
-            bye_player = floater
+    # --- Step 5: handle leftover floaters ---
+    # Best case: exactly one floater and no bye yet → they take the bye.
+    # Otherwise try pairing the leftovers with each other.
+    leftover_unmatched: List[dict] = []
+    if floaters:
+        if bye_player is None and len(floaters) == 1:
+            bye_player = floaters[0]
         else:
-            # We already gave a bye this round and we still have a leftover.
-            # This is the same emergency-bye path as above.
-            paired_so_far.append((floater, None))
+            leftover_paired, leftover_unpaired = _pair_group(floaters, past_matches)
+            paired_so_far.extend(leftover_paired)
+            leftover_unmatched = leftover_unpaired
+
+    # --- Step 6: global retry if anyone is still unmatched ---
+    # The score-group cascade prioritises Swiss-style pairings (like-against-
+    # like scores) but it can over-commit to high-quality pairings in early
+    # groups and leave a later player with no legal opponent. When that
+    # happens, retry pairing on the whole pool at once — accepts cross-score
+    # pairings as the price of giving everyone a game. Only invoked when the
+    # cascade fails, so pairing quality is unaffected for normal cases.
+    if leftover_unmatched:
+        retry_paired, retry_unpaired = _pair_group(list(pool), past_matches)
+        if len(retry_unpaired) < len(leftover_unmatched):
+            # Global retry did strictly better — use it.
+            paired_so_far = [(a, b) for a, b in retry_paired]
+            # bye_player was extracted from pool at step 1, so it stays valid.
+            for u in retry_unpaired:
+                paired_so_far.append((u, None))
+        else:
+            # Cascade was at least as good. Stick with it; emit emergency byes.
+            for u in leftover_unmatched:
+                paired_so_far.append((u, None))
 
     # --- Build the return list (apply color assignment + board numbering) ---
     pairings: List[dict] = []
@@ -206,8 +223,8 @@ def _pair_group(
     past_matches: List[dict],
 ) -> Tuple[List[Tuple[dict, dict]], List[dict]]:
     """Pair an even-sized group. First try the ideal fold (with intra-group
-    swaps); if that leaves anyone unpaired, fall back to backtracking over
-    permutations of the bottom half.
+    swaps); if that leaves anyone unpaired, fall back to a maximum-matching
+    search over the full group.
 
     Returns (paired, unpaired). The caller is responsible for cascading any
     unpaired players to the next group as floaters.
@@ -219,14 +236,152 @@ def _pair_group(
     if not fold_unpaired:
         return fold_paired, []
 
-    # Fold + swaps couldn't pair everyone. Try the more expensive backtrack.
-    bt_paired, bt_unpaired = _backtrack(group, past_matches)
+    # Fold + intra-half swaps couldn't pair everyone. Run a real maximum
+    # matching that can pair top-vs-top or bot-vs-bot too. This is needed
+    # late in tournaments when every player has only a handful of legal
+    # opponents left.
+    mm_paired, mm_unpaired = _max_matching(group, past_matches)
 
-    # Take whichever attempt got further (fewer unpaired). If tied, prefer
-    # the fold result because it preserves ranking-quality matchups.
-    if len(bt_unpaired) < len(fold_unpaired):
-        return bt_paired, bt_unpaired
+    # Prefer whichever has fewer unpaired. On ties, prefer fold (better
+    # Swiss-quality pairings: keeps top vs bottom of the group).
+    if len(mm_unpaired) < len(fold_unpaired):
+        return mm_paired, mm_unpaired
     return fold_paired, fold_unpaired
+
+
+def _max_matching(
+    group: List[dict], past_matches: List[dict]
+) -> Tuple[List[Tuple[dict, dict]], List[dict]]:
+    """Find a maximum matching over the legal-opponent graph for the group.
+
+    Algorithm: recursive search with branch pruning. For each player (in
+    order), try matching them with each legal partner that comes later in
+    the list, recursing on the remainder. Track best-found-so-far and prune
+    branches that can't beat it.
+
+    For typical score groups (≤8 players) this completes in microseconds.
+    For larger groups the branch factor explodes but the legality graph is
+    sparse enough mid-tournament that it stays fast. We hard-cap at 14
+    players in a group to keep worst-case bounded; beyond that we fall back
+    to greedy.
+    """
+    n = len(group)
+    if n < 2:
+        return [], list(group)
+    if n > 14:
+        return _greedy_matching(group, past_matches)
+
+    # Precompute legality (symmetric, by index).
+    legal = [[False] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1, n):
+            if _can_play(group[i], group[j], past_matches):
+                legal[i][j] = True
+                legal[j][i] = True
+
+    # We track best pairings as a list of (i, j) index pairs.
+    best: dict = {"unpaired": n, "pairs": []}
+
+    def search(start: int, matched: List[bool], pairs: List[Tuple[int, int]]):
+        # Find the first unmatched index at or after `start`.
+        i = start
+        while i < n and matched[i]:
+            i += 1
+        if i == n:
+            # Done. Count unmatched.
+            unmatched_count = matched.count(False)
+            if unmatched_count < best["unpaired"]:
+                best["unpaired"] = unmatched_count
+                best["pairs"] = list(pairs)
+            return
+
+        # Optimistic bound: even if we pair every remaining player perfectly,
+        # how many will be unpaired? Unmatched-after-i is at most matched.count(False).
+        # Each future pair reduces unmatched by 2, so the minimum achievable
+        # unmatched from this branch is (remaining_unmatched) - 2 * possible_pairs.
+        # If even that minimum can't beat best, prune.
+        remaining = sum(1 for k in range(i, n) if not matched[k])
+        if remaining - 2 * (remaining // 2) >= best["unpaired"]:
+            # The unmatched outside [i..n) plus remaining % 2 is a lower bound.
+            # If our current pairs already have fewer unpaired possible, prune.
+            outside_unmatched = sum(1 for k in range(0, i) if not matched[k])
+            min_possible_unpaired = outside_unmatched + (remaining % 2)
+            if min_possible_unpaired >= best["unpaired"]:
+                return
+
+        # Branch A: leave player i unmatched, move on.
+        # (Only useful if the optimal pairing genuinely can't include i.)
+        matched[i] = False  # already false but explicit
+        # Try matching i with each legal partner j > i.
+        for j in range(i + 1, n):
+            if matched[j]:
+                continue
+            if not legal[i][j]:
+                continue
+            matched[i] = True
+            matched[j] = True
+            pairs.append((i, j))
+            search(i + 1, matched, pairs)
+            pairs.pop()
+            matched[i] = False
+            matched[j] = False
+            if best["unpaired"] == 0:
+                return  # perfect — stop searching
+
+        # Also consider leaving i unmatched. Only useful if no legal partner
+        # works out — but we need to explore it for correctness when i has
+        # legal partners that all lead to worse outcomes than skipping i.
+        search(i + 1, matched, pairs)
+
+    search(0, [False] * n, [])
+
+    matched_flags = [False] * n
+    paired: List[Tuple[dict, dict]] = []
+    for i, j in best["pairs"]:
+        paired.append((group[i], group[j]))
+        matched_flags[i] = True
+        matched_flags[j] = True
+    unpaired = [group[k] for k in range(n) if not matched_flags[k]]
+    return paired, unpaired
+
+
+def _greedy_matching(
+    group: List[dict], past_matches: List[dict]
+) -> Tuple[List[Tuple[dict, dict]], List[dict]]:
+    """Fallback for very large groups (>14 players). Greedy by fewest-legal-
+    opponents-first (matches the player with the most-constrained options
+    first; standard greedy heuristic for matching)."""
+    n = len(group)
+    legal_counts = []
+    legal_map: Dict[int, List[int]] = {}
+    for i in range(n):
+        opts = [j for j in range(n) if i != j and _can_play(group[i], group[j], past_matches)]
+        legal_map[i] = opts
+        legal_counts.append((len(opts), i))
+
+    matched = [False] * n
+    paired: List[Tuple[dict, dict]] = []
+    legal_counts.sort()
+    for _, i in legal_counts:
+        if matched[i]:
+            continue
+        # Pick the legal partner with the fewest remaining options.
+        best_j = None
+        best_remaining = n + 1
+        for j in legal_map[i]:
+            if matched[j]:
+                continue
+            remaining = sum(1 for k in legal_map[j] if not matched[k])
+            if remaining < best_remaining:
+                best_remaining = remaining
+                best_j = j
+        if best_j is not None:
+            matched[i] = True
+            matched[best_j] = True
+            paired.append((group[i], group[best_j]))
+
+    unpaired = [group[k] for k in range(n) if not matched[k]]
+    return paired, unpaired
 
 
 def _try_fold(
@@ -292,51 +447,6 @@ def _find_swap(
         if _can_play(player, candidate, past_matches):
             return j
     return None
-
-
-def _backtrack(
-    group: List[dict], past_matches: List[dict]
-) -> Tuple[List[Tuple[dict, dict]], List[dict]]:
-    """Last-resort: try permutations of the bottom half to find the assignment
-    that pairs the most top players. Bounded — we cap permutations at a sane
-    limit so heavily-conflicted groups don't blow up. With ≤8 players in a
-    bottom half (i.e. ≤16-player score group, which is already enormous for a
-    school event) this fully enumerates."""
-    from itertools import permutations
-
-    n = len(group)
-    mid = n // 2
-    top = group[:mid]
-    bot = group[mid:]
-
-    best_paired: List[Tuple[dict, dict]] = []
-    best_unpaired: List[dict] = list(top)  # worst case: no one pairs
-
-    # Enumeration limit: 8! = 40320, still cheap. Anything bigger is fine
-    # to skip — fold-with-swaps will have handled it well enough.
-    if len(bot) > 8:
-        return best_paired, best_unpaired
-
-    for perm in permutations(bot):
-        paired: List[Tuple[dict, dict]] = []
-        unpaired: List[dict] = []
-        used_partners: set = set()
-        for i, t_player in enumerate(top):
-            if i < len(perm) and _can_play(t_player, perm[i], past_matches):
-                paired.append((t_player, perm[i]))
-                used_partners.add(perm[i]["id"])
-            else:
-                unpaired.append(t_player)
-        # Bottom-half players that didn't get paired are also unpaired
-        for b_player in bot:
-            if b_player["id"] not in used_partners:
-                unpaired.append(b_player)
-        if len(unpaired) < len(best_unpaired):
-            best_paired, best_unpaired = paired, unpaired
-            if not unpaired:
-                return best_paired, []  # perfect match — early exit
-
-    return best_paired, best_unpaired
 
 
 def _can_play(p1: dict, p2: dict, past_matches: List[dict]) -> bool:

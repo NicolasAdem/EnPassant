@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api")
 
 class CreateTournamentReq(BaseModel):
     name: str
-    pairing_mode: str = "swiss"  # swiss | random | manual
+    pairing_mode: str = "swiss"  # swiss | round_robin | random | manual
 
 
 class AddPlayerReq(BaseModel):
@@ -71,7 +71,7 @@ def _require_host(tid: str, host_token: Optional[str]):
 async def create_tournament(req: CreateTournamentReq):
     if not req.name.strip():
         raise HTTPException(400, "Tournament name required.")
-    if req.pairing_mode not in ("swiss", "random", "manual"):
+    if req.pairing_mode not in ("swiss", "round_robin", "random", "manual"):
         raise HTTPException(400, "Invalid pairing mode.")
     t = svc.create_tournament(req.name.strip()[:60], req.pairing_mode)
     return t
@@ -121,7 +121,7 @@ async def remove_player(tid: str, pid: str, host_token: Optional[str] = None):
 @router.post("/tournaments/{tid}/rounds")
 async def start_round(tid: str, req: StartRoundReq, host_token: Optional[str] = None):
     _require_host(tid, host_token)
-    if req.mode_override and req.mode_override not in ("swiss", "random", "manual"):
+    if req.mode_override and req.mode_override not in ("swiss", "round_robin", "random", "manual"):
         raise HTTPException(400, "Invalid mode.")
     result = svc.start_next_round(tid, req.mode_override)
     if result is None:
@@ -205,8 +205,13 @@ async def qr(tid: str, request: Request):
     """QR code that points to the join page."""
     base = str(request.base_url).rstrip("/")
     url = f"{base}/join/{tid}"
-    img = qrcode.make(url, box_size=10, border=2)
+    qr_obj = qrcode.QRCode(box_size=10, border=2)
+    qr_obj.add_data(url)
+    qr_obj.make(fit=True)
+    img = qr_obj.make_image()
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    # PilImage.save takes the format as a positional second arg
+    # (named `kind` in older versions, `format` in newer).
+    img.save(buf, "PNG")
     buf.seek(0)
     return StreamingResponse(buf, media_type="image/png")

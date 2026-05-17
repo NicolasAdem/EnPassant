@@ -97,7 +97,7 @@ function renderMatch(m) {
     return `
       <div class="card">
         <div class="row between" style="margin-bottom: 0.8rem;">
-          <span class="eyebrow">Round ${m.round_id ? '' : ''} · Board ${m.board_number}</span>
+          <span class="eyebrow">Board ${m.board_number}</span>
           <span class="badge badge-confirmed">Confirmed</span>
         </div>
         <h3>${EP.escape(winText)} ${EP.escape(oppName)}</h3>

@@ -42,9 +42,19 @@ if (stored) {
   try {
     const { id } = JSON.parse(stored);
     if (id) {
-      // Verify the player still exists
-      fetch(`/api/tournaments/${TID}/players/${id}/matches`).then(r => {
-        if (r.ok) location.href = `/player/${TID}/${id}`;
+      // Verify the player is actually in this tournament's roster.
+      // (The /matches endpoint returns [] for bogus ids, so it can't
+      // tell us whether the player exists — check state.players instead.)
+      fetch(`/api/tournaments/${TID}/state`).then(r => {
+        if (!r.ok) return;
+        return r.json();
+      }).then(state => {
+        if (state && (state.players || []).some(p => p.id === id)) {
+          location.href = `/player/${TID}/${id}`;
+        } else {
+          // Stale entry — clear it so the form is usable.
+          localStorage.removeItem(`ep_player_${TID}`);
+        }
       });
     }
   } catch (e) {}

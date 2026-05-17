@@ -121,12 +121,39 @@ Should-have before showing this to a real club
 
 Nice-to-have, not blocking
 
-[TODO] 6. Bye handling polish. Current code: if everyone has had a bye,
-   lowest-score gets it. That's fine. But a player can technically get two
-   byes in a small tournament if you cycle through. Worth tightening but
-   not urgent. Note: the #2 rewrite improved this in practice (the global-
-   retry step prefers pairing leftover players over double-bye), but the
-   underlying rule in step 1 of pair_swiss is unchanged.
+[DONE] 6. Bye handling polish. The old rule in pair_swiss step 1 (and the
+   identical block in pair_random) was: pick the lowest-scored player who
+   hasn't had a bye; if everyone has had one, pick candidates[0]. The
+   fallback ignored bye counts entirely, so in small fields over many
+   rounds the same player could collect a second bye before others got
+   their first second bye — bye counts could drift by 2+.
+
+   Fix: new helpers _bye_count and _select_bye_recipient in pairing.py.
+   Recipient is now chosen by (bye_count ASC, score ASC, elo ASC) — single
+   ordering that subsumes both the "anyone without a bye yet" pass and the
+   "lowest score otherwise" fallback. Guarantees the field's bye counts
+   stay within ±1 of each other for as long as legal pairings exist.
+
+   Round 1 behavior is unchanged (everyone is at bye_count=0, so it falls
+   through to lowest-score-then-elo, same as before). Same one-line change
+   applied to pair_random for consistency — same bug lived there.
+
+   Verified:
+     - Unit checks on _select_bye_recipient: skips bye'd players when
+       others haven't had one; picks lowest score among tied bye counts;
+       won't hand out bye k+1 to a player while anyone in the field still
+       has bye count < k.
+     - n=5 across 5 rounds: each player gets exactly one bye, in turn.
+     - Regression: n=4 through n=16 over min(5, n-1) rounds (within the
+       unique-pairing budget) — zero rematches, zero missing players,
+       expected bye count per round. Task #2's invariants are intact.
+
+   Out of scope: when the field is logically exhausted (n=3 after 3
+   rounds, n=4 after 3 rounds, n=5 after 5 rounds), the algorithm correctly
+   emits emergency byes for everyone — same behavior as before #6. If the
+   host should be told "tournament cannot continue" at that point instead
+   of producing all-bye rounds, that's a tournament.py UX change, not a
+   pairing.py change. Logged for later.
 
 [TODO] 7. On-site / off-site setting + table numbers. Useful for the chess-
    club case but cosmetic — the tournament works without it. Schema change

@@ -69,6 +69,33 @@ def _had_bye(player_id: str, past_matches: List[dict]) -> bool:
     return False
 
 
+def _bye_count(player_id: str, past_matches: List[dict]) -> int:
+    """How many byes this player has received. Used by _select_bye_recipient
+    to keep bye counts within ±1 across the field — see task #6."""
+    return sum(
+        1 for m in past_matches
+        if m.get("result") == "bye"
+        and (m["white_player_id"] == player_id or m["black_player_id"] == player_id)
+    )
+
+
+def _select_bye_recipient(pool: List[dict], past_matches: List[dict]) -> dict:
+    """Pick which player should receive a bye when the field is odd.
+
+    Rule (task #6): fewest byes first, then lowest score, then lowest ELO.
+    Ordering by bye count first means we exhaust every player at k byes
+    before anyone reaches k+1 — so bye counts stay within ±1 of each other
+    even across many rounds in small fields, which the previous "give it
+    to candidates[0] if everyone has one" rule did not guarantee.
+
+    Pool is assumed non-empty (caller only calls this on odd player counts).
+    """
+    return min(
+        pool,
+        key=lambda p: (_bye_count(p["id"], past_matches), p["score"], p["elo"]),
+    )
+
+
 # ---------------------------------------------------------------------------
 # SWISS
 # ---------------------------------------------------------------------------
@@ -77,8 +104,9 @@ def pair_swiss(players: List[dict], past_matches: List[dict]) -> List[dict]:
     """
     Implements the algorithm from EnPassant's design pseudocode:
 
-      1. If player count is odd, award a bye to the lowest-scored player who
-         hasn't had one yet. The bye is worth 1 point.
+      1. If player count is odd, award a bye. Recipient is chosen by
+         (fewest byes, lowest score, lowest ELO) — see _select_bye_recipient.
+         The bye is worth 1 point.
       2. Sort remaining players by score desc, ELO desc.
       3. Group by score.
       4. For each group (high → low): merge in any floaters from previous
@@ -112,16 +140,7 @@ def pair_swiss(players: List[dict], past_matches: List[dict]) -> List[dict]:
     bye_player = None
     pool = list(players)
     if len(pool) % 2 == 1:
-        # Lowest score first, then lowest ELO. Filter to those without a bye.
-        candidates = sorted(pool, key=lambda p: (p["score"], p["elo"]))
-        for c in candidates:
-            if not _had_bye(c["id"], past_matches):
-                bye_player = c
-                break
-        if bye_player is None:
-            # Everyone has had a bye — give to the lowest-scoring player.
-            # (Doesn't perfectly prevent double-byes; tightening is task #6.)
-            bye_player = candidates[0]
+        bye_player = _select_bye_recipient(pool, past_matches)
         pool = [p for p in pool if p["id"] != bye_player["id"]]
 
     # --- Step 2 & 3: sort, then group by score ---
@@ -461,19 +480,14 @@ def _can_play(p1: dict, p2: dict, past_matches: List[dict]) -> bool:
 # ---------------------------------------------------------------------------
 
 def pair_random(players: List[dict], past_matches: List[dict]) -> List[dict]:
-    """Shuffle and pair sequentially. Bye to leftover (lowest-score who hasn't had one)."""
+    """Shuffle and pair sequentially. Bye to leftover (selected by the same
+    fewest-byes-first rule as Swiss — see _select_bye_recipient)."""
     shuffled = players[:]
     random.shuffle(shuffled)
 
     bye_player = None
     if len(shuffled) % 2 == 1:
-        candidates = sorted(shuffled, key=lambda p: p["score"])
-        for c in candidates:
-            if not _had_bye(c["id"], past_matches):
-                bye_player = c
-                break
-        if bye_player is None:
-            bye_player = candidates[0]
+        bye_player = _select_bye_recipient(shuffled, past_matches)
         shuffled = [p for p in shuffled if p["id"] != bye_player["id"]]
 
     pairings = []

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 64" role="img" aria-label="EnPassant">
+  <!-- Rook mark.
+       Built from simple rects + a thin lime base line.
+       Geometry is intentionally chunky and broadcast-friendly. -->
+  <g transform="translate(4 6)">
+    <!-- Crenellations (top battlements): three blocks with two gaps -->
+    <rect x="0"  y="0"  width="10" height="12" fill="#e8f2ec"/>
+    <rect x="15" y="0"  width="10" height="12" fill="#e8f2ec"/>
+    <rect x="30" y="0"  width="10" height="12" fill="#e8f2ec"/>
+    <!-- Neck (narrower middle) -->
+    <rect x="4"  y="12" width="32" height="6"  fill="#e8f2ec"/>
+    <!-- Body (the tower) -->
+    <rect x="2"  y="18" width="36" height="24" fill="#e8f2ec"/>
+    <!-- Base step -->
+    <rect x="0"  y="42" width="40" height="6"  fill="#e8f2ec"/>
+    <!-- Lime signal line under the base — visual link to the brand dot -->
+    <rect x="0"  y="50" width="40" height="2"  fill="#b8ff5c"/>
+
+    <!-- Tiny lime "spark" notch on the right battlement, ties to the brand-dot -->
+    <rect x="32" y="2"  width="6"  height="3"  fill="#b8ff5c"/>
+  </g>
+
+  <!-- Wordmark.
+       "en" in Fraunces italic, a lime dot, "passant" in solid lime.
+       Falls back to a generic serif if Fraunces isn't loaded. -->
+  <g transform="translate(60 0)" font-family="'Fraunces', 'Times New Roman', serif" font-weight="600">
+    <text x="0"   y="46" font-size="36" font-style="italic" fill="#e8f2ec">en</text>
+    <!-- Brand dot, matches .brand-dot in CSS -->
+    <circle cx="48" cy="34" r="3.5" fill="#b8ff5c"/>
+    <text x="58"  y="46" font-size="36" fill="#b8ff5c">passant</text>
+  </g>
+</svg>

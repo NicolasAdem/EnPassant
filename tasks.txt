@@ -1,0 +1,25 @@
+Priority order
+Must-have for v1 to be honest about what it claims to do
+
+Round-robin pairing mode. The product currently lies to small clubs — the only "everyone plays everyone" option is Manual, where the host pairs by hand. Your friend's actual use case (≤12 players) has no working mode. This is the only item that turns away real users today.
+Friend's exact Swiss algorithm. The current pair_swiss works for the easy cases but its rematch fallback is one swap. With many rounds in a tight group, it'll produce duplicate pairings or float people who shouldn't float. The pseudocode's swap-then-backtrack is the standard correct approach. Invisible until it breaks — but when it breaks, it breaks the tournament.
+
+Should-have before showing this to a real club
+
+End-to-end check: QR join + live ticker. Both are in the README as differentiators. The projector template has the QR overlay and ticker rendering; I haven't seen whether the player flow actually completes from a phone scan, or whether the ticker has anything to display. If either is half-built, it has to be finished before anything else — the whole pitch falls apart otherwise.
+Buchholz + Sonneborn-Berger tiebreaks. Schema already has a buchholz column. pairing.py has a calculate_buchholz function. So Buchholz is half-done. Tournaments with ties at the top can't crown a winner without these. Quick to finish.
+Recommended-mode hint on /new. "≤12 players → Round-robin recommended, >12 → Swiss." Five lines of JS. Costs nothing, prevents the most common host mistake.
+
+Nice-to-have, not blocking
+
+Bye handling polish. Current code: if everyone has had a bye, lowest-score gets it. That's fine. But a player can technically get two byes in a small tournament if you cycle through. Worth tightening but not urgent.
+On-site / off-site setting + table numbers. Useful for the chess-club case but cosmetic — the tournament works without it. Schema change (location_mode on tournaments, table_number on matches), UI changes on host create, host dashboard, projector, player view.
+Round timer on projector. Mentioned in the original brief, not built. Genuinely adds drama to the projector view. Pure frontend.
+
+Polish, do last
+
+Multiple dashboard themes. CSS-only swap. Cool but adds zero functionality. The kind of thing that's fun to build and easy to ship after the engine is solid.
+"Just happened" rank-change ticker copy. ("Alice climbed from #7 to #3"). Currently the ticker just shows result messages. Adding rank deltas is one function in the result-recording flow.
+Color balance refinement in Swiss. Current _assign_colors is reasonable but doesn't track "consecutive same color" — FIDE Swiss avoids three-in-a-row of one color. Edge case, school clubs won't notice.
+Player-side dispute UI. The schema has disputed status. I haven't seen player.html to know whether the dispute flow exists. If not, this becomes critical, not nice-to-have — it's part of your USP.
+

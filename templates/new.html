@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}EnPassant · Create a tournament{% endblock %}
+
+{% block content %}
+<div class="page">
+
+  <header class="row between" style="margin-bottom: 4vh;">
+    <a href="/" class="brand brand-logo-only" style="text-decoration: none;" aria-label="EnPassant home">
+      <img src="/static/img/logo.svg" alt="EnPassant" class="brand-logo">
+    </a>
+    <a href="/" class="header-link">← Back to join</a>
+  </header>
+
+  <section style="max-width: 560px; margin: 6vh auto 0;">
+    <h1 style="font-size: clamp(2rem, 4.5vw, 3.4rem); margin-bottom: 1rem;">
+      Set up<br><em class="accent">your event.</em>
+    </h1>
+    <p class="muted" style="font-size: 1.05rem; line-height: 1.5; margin-bottom: 2.5rem; max-width: 48ch;">
+      You'll get a 6-character code and a QR for players, plus a projector link for the big screen.
+    </p>
+
+    <div class="card card-elevated">
+      <form id="create-form" class="col" style="gap: 1.4rem;">
+        <div>
+          <label for="tname">Tournament name</label>
+          <input type="text" id="tname" required maxlength="60" placeholder="e.g. School Friday Blitz">
+        </div>
+        <div>
+          <label>Pairing mode</label>
+          <div class="segmented" role="radiogroup">
+            <input type="radio" name="mode" id="m-swiss" value="swiss" checked>
+            <label for="m-swiss">Swiss</label>
+            <input type="radio" name="mode" id="m-random" value="random">
+            <label for="m-random">Random</label>
+            <input type="radio" name="mode" id="m-manual" value="manual">
+            <label for="m-manual">Manual</label>
+          </div>
+          <div class="faint" style="font-size: 0.82rem; margin-top: 0.6rem;" id="mode-hint">
+            Swiss pairs by score group: 1 vs 33, 2 vs 34… Best for competitive events.
+          </div>
+        </div>
+        <button class="btn btn-primary btn-lg" type="submit">Create tournament →</button>
+      </form>
+    </div>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const modeHints = {
+  swiss: 'Swiss pairs by score group: 1 vs 33, 2 vs 34… Best for competitive events.',
+  random: 'Random pairs players each round. Great for casual or quick events.',
+  manual: "You'll create each pairing by hand from the host dashboard.",
+};
+document.querySelectorAll('input[name=mode]').forEach(r => {
+  r.addEventListener('change', () => {
+    document.getElementById('mode-hint').textContent = modeHints[r.value];
+  });
+});
+
+document.getElementById('create-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = document.getElementById('tname').value.trim();
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  if (!name) return;
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  try {
+    const t = await EP.api('POST', '/api/tournaments', { name, pairing_mode: mode });
+    location.href = `/host/${t.id}?token=${encodeURIComponent(t.host_token)}`;
+  } catch (err) {
+    EP.toast(err.message, 'error');
+    btn.disabled = false;
+  }
+});
+</script>
+{% endblock %}

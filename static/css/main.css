@@ -441,3 +441,203 @@ label {
   .page { padding: 1rem; }
   h1 { font-size: 2.4rem; }
 }
+
+/* ============================================================
+   Join-first front page
+   Append to main.css
+   ============================================================ */
+
+/* The whole page becomes a vertical layout that fills the viewport
+   so the join input sits in the middle of the screen on first load. */
+.page-join {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(1rem, 3vw, 2rem);
+}
+
+/* --- Header ----------------------------------------------------- */
+.join-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+}
+.brand-logo {
+  height: 28px;
+  width: auto;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+.header-link {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-mute);
+  text-decoration: none;
+  padding: 0.5rem 0.8rem;
+  border-radius: var(--radius-sm);
+  transition: color 0.2s, background 0.2s;
+}
+.header-link:hover {
+  color: var(--ink);
+  background: var(--bg-2);
+}
+.header-link .accent {
+  margin-left: 0.3rem;
+}
+
+/* --- Main: vertical-centered hero with the join form ------------ */
+.join-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 4vh 0;
+}
+
+/* Background image, behind the hero. Subtle, never competes with text. */
+.join-bg {
+  position: absolute;
+  inset: -10% -5%;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+          mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+.join-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.18;
+  filter: blur(2px) saturate(0.8);
+}
+
+.join-hero {
+  position: relative;
+  z-index: 1;
+  max-width: 640px;
+  width: 100%;
+  text-align: center;
+}
+.join-hero .eyebrow {
+  margin-bottom: 1.2rem;
+  /* Tiny pulsing dot to signal "live" */
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.join-hero .eyebrow::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 8px var(--lime);
+  animation: ep-pulse 1.6s ease-in-out infinite;
+}
+
+.join-headline {
+  font-size: clamp(2.6rem, 7vw, 4.8rem);
+  margin-bottom: 2.5rem;
+  line-height: 1.02;
+}
+.join-headline em {
+  font-style: italic;
+}
+
+/* --- The join form: the page's single focal point --------------- */
+.join-form {
+  display: flex;
+  gap: 0.6rem;
+  max-width: 520px;
+  margin: 0 auto 1.5rem;
+}
+.join-form input[type=text] {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: clamp(1.4rem, 3vw, 1.8rem);
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  text-align: center;
+  padding: 1rem 1.2rem;
+  text-transform: uppercase;
+  background: rgba(13, 26, 20, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--line-2);
+}
+.join-form input[type=text]::placeholder {
+  color: var(--ink-faint);
+  letter-spacing: 0.25em;
+  font-weight: 400;
+}
+.join-form input[type=text]:focus {
+  border-color: var(--lime);
+  box-shadow: 0 0 0 3px rgba(184, 255, 92, 0.18);
+}
+.join-form .btn-primary {
+  padding: 1rem 1.6rem;
+  font-size: 1.05rem;
+  white-space: nowrap;
+}
+
+/* "Or scan the QR" hint, deliberately small */
+.join-or {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+}
+.join-or-icon {
+  width: 22px;
+  height: 22px;
+  opacity: 0.7;
+}
+
+/* --- Footer ----------------------------------------------------- */
+.join-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 2vh;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  position: relative;
+  z-index: 2;
+}
+.footer-link {
+  color: var(--ink-mute);
+  text-decoration: none;
+}
+.footer-link:hover {
+  color: var(--lime);
+}
+
+/* --- Mobile tightening ------------------------------------------ */
+@media (max-width: 560px) {
+  .join-form {
+    flex-direction: column;
+  }
+  .join-form input[type=text] {
+    font-size: 1.5rem;
+  }
+  .join-headline {
+    margin-bottom: 1.8rem;
+  }
+  .header-link {
+    font-size: 0.72rem;
+  }
+  /* Tighten the "Hosting?" link on small screens so it doesn't crowd the logo */
+  .header-link .accent {
+    display: block;
+    margin-left: 0;
+  }
+}

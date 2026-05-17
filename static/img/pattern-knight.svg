@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- Repeating knight silhouette pattern.
+       Stroke-only, low opacity, lime accent.
+       Use as a CSS background-image with `background-repeat: repeat`. -->
+  <defs>
+    <pattern id="knights" x="0" y="0" width="60" height="60" patternUnits="userSpaceOnUse">
+      <!-- Single knight glyph, simplified silhouette.
+           Drawn as a chunky path that suggests a horse head profile. -->
+      <g transform="translate(15 12) scale(0.55)" fill="none" stroke="#b8ff5c" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.35">
+        <!-- Horse head outline -->
+        <path d="
+          M 8 56
+          L 8 48
+          C 8 42, 12 38, 16 36
+          L 20 32
+          C 18 28, 18 24, 22 20
+          L 28 10
+          C 30 6, 34 4, 38 6
+          L 44 14
+          C 48 18, 50 22, 50 28
+          L 50 36
+          C 50 42, 46 46, 42 48
+          L 42 56
+          Z
+        "/>
+        <!-- Mane notch -->
+        <path d="M 28 14 L 32 18 L 28 22"/>
+        <!-- Eye -->
+        <circle cx="36" cy="22" r="1.5" fill="#b8ff5c" stroke="none"/>
+      </g>
+    </pattern>
+  </defs>
+  <rect width="120" height="120" fill="url(#knights)"/>
+</svg>

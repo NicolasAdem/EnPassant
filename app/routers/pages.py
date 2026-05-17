@@ -17,6 +17,11 @@ async def home(request: Request):
     return templates.TemplateResponse(request, "index.html", {})
 
 
+@router.get("/new", response_class=HTMLResponse)
+async def new_tournament_page(request: Request):
+    return templates.TemplateResponse(request, "new.html", {})
+
+
 @router.get("/host/{tid}", response_class=HTMLResponse)
 async def host_page(request: Request, tid: str, token: str = ""):
     t = svc.get_tournament(tid)

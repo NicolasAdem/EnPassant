@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Scan QR with phone">
+  <!-- Phone outline -->
+  <rect x="11" y="4" width="26" height="40" rx="4"
+        fill="none" stroke="#9fb4a7" stroke-width="1.5"/>
+  <!-- Speaker notch -->
+  <rect x="20" y="6.5" width="8" height="1.5" rx="0.75" fill="#9fb4a7"/>
+  <!-- Home indicator -->
+  <rect x="20" y="40" width="8" height="1.2" rx="0.6" fill="#9fb4a7"/>
+
+  <!-- QR code on screen — three locator squares + scattered modules.
+       Stylized so it reads as "QR" without being a real scannable code. -->
+  <g transform="translate(14 11)">
+    <!-- Three locator squares -->
+    <g fill="#b8ff5c">
+      <rect x="0"  y="0"  width="6" height="6"/>
+      <rect x="14" y="0"  width="6" height="6"/>
+      <rect x="0"  y="14" width="6" height="6"/>
+    </g>
+    <!-- Inner white squares to give the locator look -->
+    <g fill="#07100c">
+      <rect x="1.5" y="1.5"  width="3" height="3"/>
+      <rect x="15.5" y="1.5" width="3" height="3"/>
+      <rect x="1.5" y="15.5" width="3" height="3"/>
+    </g>
+    <!-- Scattered data modules -->
+    <g fill="#b8ff5c">
+      <rect x="8"  y="2"  width="2" height="2"/>
+      <rect x="11" y="4"  width="2" height="2"/>
+      <rect x="8"  y="8"  width="2" height="2"/>
+      <rect x="11" y="9"  width="2" height="2"/>
+      <rect x="14" y="9"  width="2" height="2"/>
+      <rect x="17" y="11" width="2" height="2"/>
+      <rect x="2"  y="9"  width="2" height="2"/>
+      <rect x="5"  y="11" width="2" height="2"/>
+      <rect x="8"  y="14" width="2" height="2"/>
+      <rect x="11" y="14" width="2" height="2"/>
+      <rect x="14" y="17" width="2" height="2"/>
+      <rect x="17" y="14" width="2" height="2"/>
+      <rect x="11" y="17" width="2" height="2"/>
+      <rect x="8"  y="11" width="2" height="2"/>
+    </g>
+  </g>
+
+  <!-- Scan lines: two small corner brackets suggesting "aiming" -->
+  <g fill="none" stroke="#b8ff5c" stroke-width="1.2" opacity="0.7">
+    <path d="M 6 14 L 6 10 L 10 10"/>
+    <path d="M 42 14 L 42 10 L 38 10"/>
+    <path d="M 6 34 L 6 38 L 10 38"/>
+    <path d="M 42 34 L 42 38 L 38 38"/>
+  </g>
+</svg>

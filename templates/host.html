@@ -186,7 +186,8 @@ function renderStandings(players, t) {
           <th style="padding: 0.5rem 0.4rem;">Player</th>
           <th style="padding: 0.5rem 0.4rem; text-align: right;">ELO</th>
           <th style="padding: 0.5rem 0.4rem; text-align: right;">Score</th>
-          <th style="padding: 0.5rem 0.4rem; text-align: right;">Buchholz</th>
+          <th style="padding: 0.5rem 0.4rem; text-align: right;" title="Buchholz: sum of opponents' scores. First tiebreak.">BH</th>
+          <th style="padding: 0.5rem 0.4rem; text-align: right;" title="Sonneborn-Berger: opponents' scores weighted by your result. Second tiebreak.">SB</th>
           <th style="padding: 0.5rem 0.4rem;"></th>
         </tr>
       </thead>
@@ -198,6 +199,7 @@ function renderStandings(players, t) {
             <td style="padding: 0.6rem 0.4rem; text-align: right; font-family: var(--font-mono); color: var(--ink-faint); font-size: 0.85rem;">${p.elo}</td>
             <td style="padding: 0.6rem 0.4rem; text-align: right; font-family: var(--font-mono); color: var(--lime); font-weight: 600;">${EP.formatScore(p.score)}</td>
             <td style="padding: 0.6rem 0.4rem; text-align: right; font-family: var(--font-mono); color: var(--ink-faint); font-size: 0.85rem;">${EP.formatScore(p.buchholz)}</td>
+            <td style="padding: 0.6rem 0.4rem; text-align: right; font-family: var(--font-mono); color: var(--ink-faint); font-size: 0.85rem;">${EP.formatScore(p.sonneborn_berger || 0)}</td>
             <td style="padding: 0.6rem 0.4rem; text-align: right;">
               ${t.status === 'lobby' ? `<button class="btn btn-ghost" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="removePlayer('${p.id}', '${EP.escape(p.name).replace(/'/g, "\\'")}')">×</button>` : ''}
             </td>

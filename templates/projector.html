@@ -178,7 +178,7 @@ function renderLeaderboard(players, matches) {
         <div class="rank-elo">ELO ${p.elo}</div>
       </div>
       <div class="rank-score">${EP.formatScore(p.score)}</div>
-      <div class="rank-buchholz">BH ${EP.formatScore(p.buchholz)}</div>
+      <div class="rank-buchholz">BH ${EP.formatScore(p.buchholz)} · SB ${EP.formatScore(p.sonneborn_berger || 0)}</div>
     `;
   });
 

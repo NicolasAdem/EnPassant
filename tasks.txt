@@ -70,13 +70,50 @@ Should-have before showing this to a real club
    unbounded. Negligible for a normal event; bound it or reset on
    round_start if a projector tab ever spans multiple tournaments.
 
-[NEXT] 4. Buchholz + Sonneborn-Berger tiebreaks. Schema already has a
-   buchholz column. tournament.py has a _recompute_buchholz helper that
-   runs on every match finalization. So Buchholz is genuinely half-done
-   and used in ORDER BY for list_players. Need to add a sonneborn_berger
-   column + computation, expose both on the standings, and make sure the
-   projector leaderboard tooltip / host dashboard explains the tiebreak
-   when scores are tied at the top.
+[DONE] 4. Buchholz + Sonneborn-Berger tiebreaks.
+
+   Schema: added `sonneborn_berger REAL NOT NULL DEFAULT 0` to the players
+   table. Added a `_migrate` helper in database.py that does an idempotent
+   ADD COLUMN for existing dev databases (guarded by PRAGMA table_info, so
+   re-running is safe). Verified the migration preserves existing player
+   rows (score, buchholz untouched; new column defaults to 0).
+
+   Computation: renamed _recompute_buchholz → _recompute_tiebreaks in
+   tournament.py. Now computes both tiebreaks in one pass over confirmed
+   matches per player. Same trigger as before (every _finalize_match call),
+   so the recompute cadence is unchanged.
+
+   Definitions used:
+     - Buchholz: sum of distinct opponents' final scores. Byes excluded.
+     - Sonneborn-Berger: sum over each game of (opponent_score *
+       game_weight), where weight = 1.0 for a win, 0.5 for a draw, 0.0
+       for a loss. Byes excluded (no opponent score to weight).
+   This is the FIDE-standard SB. If the club prefers the "Median Buchholz"
+   or "Cumulative" variants, they're additional columns added later.
+
+   Standings order: list_players now sorts by
+     score DESC, buchholz DESC, sonneborn_berger DESC, elo DESC, name ASC
+   So Buchholz is the first tiebreak, SB is the second. This matches FIDE's
+   most common Swiss order.
+
+   UI:
+     - host.html standings table: added an SB column next to BH. Both have
+       title= tooltips explaining what they are.
+     - projector.html leaderboard: the existing BH chip became
+       "BH X · SB Y" on the same row.
+
+   Tests: test_tiebreaks.py verifies four cases —
+     a. Classic 4-player round-robin where SB matches textbook values
+        (Alice 3.0 / Bob 1.0 / Carol 0.0 / Dave 0.0).
+     b. Two players tied on score+BH; SB equal too because their
+        opponents ended on equal scores. Documented in the test.
+     c. Two players on equal score but Alice beat stronger opponents;
+        SB correctly orders Alice first.
+     d. A bye contributes 0 to SB and 0 to BH (FIDE standard).
+
+   Verified end-to-end: full report → confirm → snapshot pipeline returns
+   sonneborn_berger in WS broadcasts. The original task #3 e2e test still
+   passes against the task #4 codebase, no regressions.
 
 [DONE] 5. Recommended-mode hint on /new. Shipped alongside #1 — a player-
    count field on the create page now suggests Round-robin (≤12) or Swiss

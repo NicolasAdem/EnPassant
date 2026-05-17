@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS players (
     name TEXT NOT NULL,
     elo INTEGER NOT NULL DEFAULT 1200,
     score REAL NOT NULL DEFAULT 0, -- 1 win, 0.5 draw, 0 loss
-    buchholz REAL NOT NULL DEFAULT 0, -- tiebreak
+    buchholz REAL NOT NULL DEFAULT 0, -- tiebreak: sum of opponents' scores
+    sonneborn_berger REAL NOT NULL DEFAULT 0, -- tiebreak: weighted-by-result opponent scores
     joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
 );
@@ -103,7 +104,25 @@ CREATE INDEX IF NOT EXISTS idx_events_tournament ON events(tournament_id, id DES
 """
 
 
+def _migrate(conn):
+    """Apply idempotent migrations to keep existing dev databases in sync
+    with the schema above. Each step checks before changing.
+
+    sqlite's ALTER TABLE ADD COLUMN is fine to run repeatedly only if we
+    guard against the "duplicate column" error, since SQLite doesn't have
+    an IF NOT EXISTS clause for ADD COLUMN until 3.35 and we want to work
+    on older builds too.
+    """
+    def add_column(table: str, column: str, decl: str):
+        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if column not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+    add_column("players", "sonneborn_berger", "REAL NOT NULL DEFAULT 0")
+
+
 def init_db():
-    """Create tables if they don't exist."""
+    """Create tables if they don't exist, then run migrations."""
     with db() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)

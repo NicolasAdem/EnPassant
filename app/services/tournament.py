@@ -83,7 +83,8 @@ def remove_player(tid: str, pid: str) -> bool:
 def list_players(tid: str) -> List[dict]:
     with db() as conn:
         rows = conn.execute(
-            "SELECT * FROM players WHERE tournament_id = ? ORDER BY score DESC, buchholz DESC, elo DESC, name ASC",
+            "SELECT * FROM players WHERE tournament_id = ? "
+            "ORDER BY score DESC, buchholz DESC, sonneborn_berger DESC, elo DESC, name ASC",
             (tid,),
         ).fetchall()
         return [dict(r) for r in rows]
@@ -322,7 +323,7 @@ def host_resolve_match(tid: str, match_id: str, result: str) -> Optional[dict]:
 
 
 def _finalize_match(conn, match_id: str, confirmer: str):
-    """Internal: mark confirmed, update player scores, log event, recompute buchholz."""
+    """Internal: mark confirmed, update player scores, log event, recompute tiebreaks."""
     m = dict(conn.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone())
     result = m["result"]
     white_id = m["white_player_id"]
@@ -342,8 +343,8 @@ def _finalize_match(conn, match_id: str, confirmer: str):
         (confirmer, match_id),
     )
 
-    # Recompute Buchholz for all players (cheap; fewer than a few hundred typically)
-    _recompute_buchholz(conn, m["tournament_id"])
+    # Recompute tiebreaks for all players (cheap; fewer than a few hundred typically)
+    _recompute_tiebreaks(conn, m["tournament_id"])
 
     # Build the event message + payload for the ticker
     wname_row = conn.execute("SELECT name FROM players WHERE id = ?", (white_id,)).fetchone()
@@ -361,27 +362,61 @@ def _finalize_match(conn, match_id: str, confirmer: str):
                 "white": wname, "black": bname, "white_id": white_id, "black_id": black_id})
 
 
-def _recompute_buchholz(conn, tid: str):
-    """Recalculate buchholz tiebreak for all players in tournament."""
+def _recompute_tiebreaks(conn, tid: str):
+    """Recalculate Buchholz and Sonneborn-Berger tiebreaks for all players.
+
+    Buchholz: sum of opponents' final scores. Each distinct opponent counts
+    once even if you played them multiple times (matches Swiss convention;
+    relevant only with rematches, which the pairing engine avoids anyway).
+
+    Sonneborn-Berger: sum of (opponent_score * game_weight), summed across
+    every individual game (so a rematch contributes twice). game_weight is
+    1.0 for a win, 0.5 for a draw, 0.0 for a loss. Byes are excluded from
+    both (FIDE standard — a bye opponent has no score).
+    """
     players = [dict(r) for r in conn.execute(
         "SELECT id, score FROM players WHERE tournament_id = ?", (tid,)
     ).fetchall()]
     matches = [dict(r) for r in conn.execute(
-        "SELECT white_player_id, black_player_id, result FROM matches WHERE tournament_id = ? AND status = 'confirmed'",
+        "SELECT white_player_id, black_player_id, result FROM matches "
+        "WHERE tournament_id = ? AND status = 'confirmed'",
         (tid,),
     ).fetchall()]
     score_map = {p["id"]: p["score"] for p in players}
+
     for p in players:
-        opps = set()
+        opps_for_buchholz = set()
+        sb = 0.0
         for m in matches:
             if m["result"] == "bye":
                 continue
-            if m["white_player_id"] == p["id"] and m["black_player_id"]:
-                opps.add(m["black_player_id"])
-            elif m["black_player_id"] == p["id"] and m["white_player_id"]:
-                opps.add(m["white_player_id"])
-        bh = sum(score_map.get(o, 0) for o in opps)
-        conn.execute("UPDATE players SET buchholz = ? WHERE id = ?", (bh, p["id"]))
+            w = m["white_player_id"]
+            b = m["black_player_id"]
+            if w == p["id"] and b:
+                opp = b
+                if m["result"] == "white":
+                    weight = 1.0
+                elif m["result"] == "draw":
+                    weight = 0.5
+                else:
+                    weight = 0.0
+                opps_for_buchholz.add(opp)
+                sb += weight * score_map.get(opp, 0)
+            elif b == p["id"] and w:
+                opp = w
+                if m["result"] == "black":
+                    weight = 1.0
+                elif m["result"] == "draw":
+                    weight = 0.5
+                else:
+                    weight = 0.0
+                opps_for_buchholz.add(opp)
+                sb += weight * score_map.get(opp, 0)
+        bh = sum(score_map.get(o, 0) for o in opps_for_buchholz)
+        conn.execute(
+            "UPDATE players SET buchholz = ?, sonneborn_berger = ? WHERE id = ?",
+            (bh, sb, p["id"]),
+        )
 
 
 def _log_event(conn, tid: str, kind: str, message: str, payload: Optional[dict] = None):

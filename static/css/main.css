@@ -6,8 +6,18 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700;12..96,800&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;600&display=swap');
 
+/* ============================================================
+   Task #9: theming. All themes override the same variable surface
+   defined in :root. The "Forest" defaults below ARE the original
+   palette — :root and [data-theme="forest"] produce identical
+   output. Other themes (royal, crimson, ivory) sit further down
+   the file as scoped overrides. The rgba(...) literals throughout
+   the stylesheet have been rewritten as rgba(var(--accent-rgb),α)
+   etc. so they re-tint when the variables change.
+   ============================================================ */
+
 :root {
-  /* Palette — moss + lichen + pine + lime spark */
+  /* Palette — moss + lichen + pine + lime spark (Forest, default) */
   --bg-0: #07100c;        /* deepest */
   --bg-1: #0d1a14;
   --bg-2: #122620;
@@ -26,10 +36,31 @@
   --gold: #d4b572;
   --rose: #d96a6a;        /* dispute / error */
 
+  /* RGB triples for the colors that appear inside rgba(...) calls.
+     Kept in sync with the hex values above. Themes override these
+     alongside the hex variants. */
+  --accent-rgb: 184, 255, 92;   /* matches --lime */
+  --moss-rgb: 74, 143, 107;     /* matches --moss */
+  --pine-rgb: 45, 102, 73;      /* matches --pine */
+  --rose-rgb: 217, 106, 106;    /* matches --rose */
+  --gold-rgb: 212, 181, 114;    /* matches --gold */
+  --bg-0-rgb: 7, 16, 12;        /* matches --bg-0; used in round-hero overlay */
+  --bg-1-rgb: 13, 26, 20;       /* matches --bg-1; used by join-form input */
+
+  /* The body grain. Light themes flip this from white-on-dark to
+     dark-on-light so the grid texture stays visible either way. */
+  --grain-rgb: 255, 255, 255;
+  --grain-alpha: 0.012;
+
+  /* The btn-primary's text color sat at var(--bg-0) inline before
+     theming. On light themes that produced white-on-lime, which is
+     unreadable. Pulled out so each theme can pick the right contrast. */
+  --btn-primary-ink: var(--bg-0);
+
   --grad-board: linear-gradient(135deg, #0e1a14 0%, #122620 50%, #0d1a14 100%);
 
   --shadow-1: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.4);
-  --shadow-glow: 0 0 0 1px rgba(184,255,92,0.25), 0 8px 32px rgba(184,255,92,0.12);
+  --shadow-glow: 0 0 0 1px rgba(var(--accent-rgb),0.25), 0 8px 32px rgba(var(--accent-rgb),0.12);
 
   --font-display: 'Fraunces', 'Times New Roman', serif;
   --font-body: 'Bricolage Grotesque', system-ui, sans-serif;
@@ -60,20 +91,22 @@ html, body {
 
 body {
   background-image:
-    radial-gradient(circle at 20% 10%, rgba(74,143,107,0.10), transparent 50%),
-    radial-gradient(circle at 80% 90%, rgba(45,102,73,0.10), transparent 50%),
-    linear-gradient(180deg, var(--bg-0) 0%, #050a07 100%);
+    radial-gradient(circle at 20% 10%, rgba(var(--moss-rgb),0.10), transparent 50%),
+    radial-gradient(circle at 80% 90%, rgba(var(--pine-rgb),0.10), transparent 50%),
+    linear-gradient(180deg, var(--bg-0) 0%, var(--bg-deeper, #050a07) 100%);
   background-attachment: fixed;
 }
 
-/* Subtle board-grain texture */
+/* Subtle board-grain texture. The color and alpha both flow from theme
+   variables so the grid stays visible on light themes (dark-on-light)
+   without becoming a heavy pattern. */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   background-image:
-    repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 80px),
-    repeating-linear-gradient(90deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 80px);
+    repeating-linear-gradient(0deg, rgba(var(--grain-rgb), var(--grain-alpha)) 0 1px, transparent 1px 80px),
+    repeating-linear-gradient(90deg, rgba(var(--grain-rgb), var(--grain-alpha)) 0 1px, transparent 1px 80px);
   pointer-events: none;
   z-index: 0;
 }
@@ -130,7 +163,7 @@ h3 { font-size: 1.25rem; }
 .card-elevated {
   border-color: var(--line-2);
   background:
-    linear-gradient(180deg, rgba(184,255,92,0.04) 0%, transparent 30%),
+    linear-gradient(180deg, rgba(var(--accent-rgb),0.04) 0%, transparent 30%),
     linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
 }
 
@@ -166,14 +199,14 @@ h3 { font-size: 1.25rem; }
 
 .btn-primary {
   background: var(--lime);
-  color: var(--bg-0);
+  color: var(--btn-primary-ink);
   border-color: var(--lime);
   font-weight: 700;
 }
 .btn-primary:hover {
-  background: #cdff7e;
-  border-color: #cdff7e;
-  box-shadow: 0 0 24px rgba(184, 255, 92, 0.3);
+  background: var(--lime-hover, #cdff7e);
+  border-color: var(--lime-hover, #cdff7e);
+  box-shadow: 0 0 24px rgba(var(--accent-rgb), 0.3);
 }
 
 .btn-ghost {
@@ -186,11 +219,11 @@ h3 { font-size: 1.25rem; }
 
 .btn-danger {
   background: transparent;
-  border-color: rgba(217, 106, 106, 0.4);
+  border-color: rgba(var(--rose-rgb), 0.4);
   color: var(--rose);
 }
 .btn-danger:hover {
-  background: rgba(217, 106, 106, 0.1);
+  background: rgba(var(--rose-rgb), 0.1);
   border-color: var(--rose);
 }
 
@@ -214,7 +247,7 @@ input[type=text], input[type=number], select {
 input[type=text]:focus, input[type=number]:focus, select:focus {
   outline: none;
   border-color: var(--moss);
-  box-shadow: 0 0 0 3px rgba(74, 143, 107, 0.15);
+  box-shadow: 0 0 0 3px rgba(var(--moss-rgb), 0.15);
 }
 
 label {
@@ -252,7 +285,7 @@ label {
 }
 .segmented input:checked + label {
   background: var(--lime);
-  color: var(--bg-0);
+  color: var(--btn-primary-ink);
   font-weight: 700;
 }
 .segmented label:hover:not(:has(input:checked)) {
@@ -272,10 +305,10 @@ label {
   border: 1px solid var(--line);
   white-space: nowrap;
 }
-.badge-pending { color: var(--gold); border-color: rgba(212,181,114,0.3); }
-.badge-reported { color: var(--lime); border-color: rgba(184,255,92,0.3); }
-.badge-confirmed { color: var(--moss); border-color: rgba(74,143,107,0.3); }
-.badge-disputed { color: var(--rose); border-color: rgba(217,106,106,0.3); }
+.badge-pending { color: var(--gold); border-color: rgba(var(--gold-rgb),0.3); }
+.badge-reported { color: var(--lime); border-color: rgba(var(--accent-rgb),0.3); }
+.badge-confirmed { color: var(--moss); border-color: rgba(var(--moss-rgb),0.3); }
+.badge-disputed { color: var(--rose); border-color: rgba(var(--rose-rgb),0.3); }
 .badge-bye { color: var(--ink-faint); }
 
 /* Tournament code display */
@@ -285,7 +318,7 @@ label {
   font-weight: 600;
   letter-spacing: 0.3em;
   color: var(--lime);
-  text-shadow: 0 0 24px rgba(184, 255, 92, 0.3);
+  text-shadow: 0 0 24px rgba(var(--accent-rgb), 0.3);
 }
 
 /* ============================================================
@@ -565,7 +598,7 @@ label {
   text-align: center;
   padding: 1rem 1.2rem;
   text-transform: uppercase;
-  background: rgba(13, 26, 20, 0.7);
+  background: rgba(var(--bg-1-rgb), 0.7);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--line-2);
@@ -577,7 +610,7 @@ label {
 }
 .join-form input[type=text]:focus {
   border-color: var(--lime);
-  box-shadow: 0 0 0 3px rgba(184, 255, 92, 0.18);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18);
 }
 .join-form .btn-primary {
   padding: 1rem 1.6rem;
@@ -658,4 +691,221 @@ label {
   /* Slightly tighter padding so 4 buttons stand a chance at fitting */
   padding: 0.5rem 0.75rem;
   font-size: 0.85rem;
+}
+
+/* ============================================================
+   Task #9: themes. Each theme overrides only the variables;
+   every rule above reads from them, so a theme switch is a
+   single attribute change on <html>. The picker UI lives at
+   the very bottom of this section.
+
+   Picking palettes:
+     Royal   — deep navy + warm amber. The classic chess look.
+     Crimson — near-black + signal red. Broadcast / drama mode.
+     Ivory   — light surfaces + charcoal ink + bottle green.
+               For daylight rooms and TV/projector setups that
+               aren't dark.
+
+   Forest (the original) is :root, so an unset attribute or
+   data-theme="forest" produces identical output to before.
+   ============================================================ */
+
+:root[data-theme="forest"] {
+  /* Explicit duplicate of :root, so the picker has a stable
+     selector to highlight when "Forest" is the active theme. */
+}
+
+:root[data-theme="royal"] {
+  --bg-0: #060914;
+  --bg-1: #0c1426;
+  --bg-2: #131e3a;
+  --bg-3: #1d2c52;
+  --line: #243562;
+  --line-2: #314782;
+
+  --ink: #e8edf7;
+  --ink-mute: #a3afca;
+  --ink-faint: #6c7894;
+
+  --moss: #5a7bc0;        /* repurposed: "secondary accent" — the cool blue */
+  --pine: #3e5aa0;
+  --lime: #f0b955;        /* primary accent: warm amber */
+  --lime-dim: #c08a2c;
+  --gold: #f0b955;        /* on royal, gold IS the accent */
+  --rose: #e07a7a;
+
+  --accent-rgb: 240, 185, 85;
+  --moss-rgb: 90, 123, 192;
+  --pine-rgb: 62, 90, 160;
+  --rose-rgb: 224, 122, 122;
+  --gold-rgb: 240, 185, 85;
+  --bg-0-rgb: 6, 9, 20;
+  --bg-1-rgb: 12, 20, 38;
+
+  --grain-rgb: 255, 255, 255;
+  --grain-alpha: 0.012;
+
+  --btn-primary-ink: #1a1308;
+  --lime-hover: #f5cb78;
+  --bg-deeper: #03060f;
+
+  --grad-board: linear-gradient(135deg, #0c1426 0%, #131e3a 50%, #0c1426 100%);
+}
+
+:root[data-theme="crimson"] {
+  --bg-0: #0a0606;
+  --bg-1: #150c0c;
+  --bg-2: #1f1414;
+  --bg-3: #2e1d1d;
+  --line: #3b2828;
+  --line-2: #553535;
+
+  --ink: #f2eaea;
+  --ink-mute: #b8a8a8;
+  --ink-faint: #7a6a6a;
+
+  --moss: #b87878;        /* repurposed: muted rose for "confirmed" badge */
+  --pine: #8a4848;
+  --lime: #ef4d4d;        /* primary accent: signal red */
+  --lime-dim: #c83838;
+  --gold: #e0a44a;
+  --rose: #ef4d4d;        /* on crimson, rose IS the accent — disputes use gold instead */
+
+  --accent-rgb: 239, 77, 77;
+  --moss-rgb: 184, 120, 120;
+  --pine-rgb: 138, 72, 72;
+  --rose-rgb: 239, 77, 77;
+  --gold-rgb: 224, 164, 74;
+  --bg-0-rgb: 10, 6, 6;
+  --bg-1-rgb: 21, 12, 12;
+
+  --grain-rgb: 255, 255, 255;
+  --grain-alpha: 0.014;
+
+  --btn-primary-ink: #1a0606;
+  --lime-hover: #ff6868;
+  --bg-deeper: #050202;
+
+  --grad-board: linear-gradient(135deg, #150c0c 0%, #1f1414 50%, #150c0c 100%);
+}
+
+:root[data-theme="ivory"] {
+  /* Light theme. All the dark-on-dark assumptions in the
+     stylesheet route through variables, so this works by
+     inverting bg / ink and picking accent colors that read
+     well on a near-white surface. */
+  --bg-0: #f5f1e8;        /* warm parchment */
+  --bg-1: #ebe5d4;
+  --bg-2: #e2dac3;
+  --bg-3: #d4c9a8;
+  --line: #c5b893;
+  --line-2: #a89a72;
+
+  --ink: #1a2118;        /* near-black with a green undertone */
+  --ink-mute: #4a574a;
+  --ink-faint: #7a857a;
+
+  --moss: #4a8f6b;       /* keep the moss greens — they read well on cream */
+  --pine: #2d6649;
+  --lime: #2d6649;       /* primary accent: bottle green */
+  --lime-dim: #5a8f6e;
+  --gold: #a8842c;
+  --rose: #b03838;
+
+  --accent-rgb: 45, 102, 73;
+  --moss-rgb: 74, 143, 107;
+  --pine-rgb: 45, 102, 73;
+  --rose-rgb: 176, 56, 56;
+  --gold-rgb: 168, 132, 44;
+  --bg-0-rgb: 245, 241, 232;
+  --bg-1-rgb: 235, 229, 212;
+
+  /* Light theme inverts the grain: dark gridlines on a cream
+     surface, slightly heavier alpha because dark-on-light needs
+     more contrast to be visible than light-on-dark. */
+  --grain-rgb: 0, 0, 0;
+  --grain-alpha: 0.025;
+
+  /* On bottle-green buttons, white text reads. The dark var(--bg-0)
+     fallback used by the other themes would render as cream-on-green
+     here, which is too low-contrast. */
+  --btn-primary-ink: #f5f1e8;
+  --lime-hover: #1f4f37;
+  --bg-deeper: #e8dec5;
+
+  --grad-board: linear-gradient(135deg, #ebe5d4 0%, #e2dac3 50%, #ebe5d4 100%);
+}
+
+/* The :root[data-theme="ivory"] body backdrop still uses the moss/pine
+   radial-gradient tints from the body rule above. Those work — the
+   accent-rgb triples themselves now map to bottle-green RGB on this
+   theme, so the gradients tint correctly. No special-case needed. */
+
+/* ============================================================
+   Theme picker — used on host.html, can be embedded anywhere.
+   Renders four small color chips with a checked state.
+   ============================================================ */
+
+.theme-picker {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.theme-picker label {
+  /* Override the global uppercase-mono label styling for this control. */
+  margin: 0;
+  font-family: var(--font-body);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink-mute);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.5rem 0.3rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.theme-picker input[type=radio] {
+  /* Visually hidden but still focusable via keyboard. */
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+}
+.theme-picker label:hover { color: var(--ink); }
+.theme-picker label:has(input:checked) {
+  border-color: var(--lime);
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--ink);
+}
+/* Fallback for browsers without :has() — JS adds .is-checked too. */
+.theme-picker label.is-checked {
+  border-color: var(--lime);
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--ink);
+}
+.theme-picker .swatch {
+  width: 36px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  position: relative;
+  overflow: hidden;
+}
+/* Swatch previews: each one shows the bg + accent of its theme,
+   so the host sees what they're picking without applying it first.
+   Hardcoded colors here are intentional — they're a preview, not
+   the live theme. */
+.theme-picker .swatch.forest  { background: linear-gradient(135deg, #0d1a14 0% 60%, #b8ff5c 60% 100%); }
+.theme-picker .swatch.royal   { background: linear-gradient(135deg, #0c1426 0% 60%, #f0b955 60% 100%); }
+.theme-picker .swatch.crimson { background: linear-gradient(135deg, #150c0c 0% 60%, #ef4d4d 60% 100%); }
+.theme-picker .swatch.ivory   { background: linear-gradient(135deg, #ebe5d4 0% 60%, #2d6649 60% 100%); }
+.theme-picker .swatch-label {
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
 }

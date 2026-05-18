@@ -104,6 +104,38 @@
         </div>
         <button id="btn-add-match" class="btn" style="margin-top: 1rem; width: 100%;">Add match</button>
       </div>
+
+      <!-- Task #9: theme picker. CSS-only switch, persisted in
+           localStorage. Affects host + projector + every other view
+           on this device. -->
+      <div class="card">
+        <div class="eyebrow" style="margin-bottom: 0.8rem;">Theme</div>
+        <div class="theme-picker" id="theme-picker" role="radiogroup" aria-label="Color theme">
+          <label data-theme-name="forest">
+            <span class="swatch forest"></span>
+            <span class="swatch-label">Forest</span>
+            <input type="radio" name="theme" value="forest">
+          </label>
+          <label data-theme-name="royal">
+            <span class="swatch royal"></span>
+            <span class="swatch-label">Royal</span>
+            <input type="radio" name="theme" value="royal">
+          </label>
+          <label data-theme-name="crimson">
+            <span class="swatch crimson"></span>
+            <span class="swatch-label">Crimson</span>
+            <input type="radio" name="theme" value="crimson">
+          </label>
+          <label data-theme-name="ivory">
+            <span class="swatch ivory"></span>
+            <span class="swatch-label">Ivory</span>
+            <input type="radio" name="theme" value="ivory">
+          </label>
+        </div>
+        <div class="muted" style="font-size: 0.78rem; margin-top: 0.7rem;">
+          Saved to this device. Projector view inherits it.
+        </div>
+      </div>
     </div>
 
     <!-- Right column: live state -->
@@ -453,6 +485,42 @@ document.querySelectorAll('input[name=rmode]').forEach(r => {
     if (LATEST_STATE) toggleManualCard(r.value, LATEST_STATE.players || []);
   });
 });
+
+// Task #9: theme picker wiring. The :has() selector handles the
+// checked-state styling in modern browsers; the .is-checked class
+// is a fallback for older Safari. Both stay in sync because we
+// flip the class manually on every change and on the initial paint.
+(function initThemePicker() {
+  const picker = document.getElementById('theme-picker');
+  if (!picker) return;
+  const radios = picker.querySelectorAll('input[name=theme]');
+  const current = EP.getTheme();
+  function reflect(name) {
+    picker.querySelectorAll('label').forEach(lbl => {
+      const isActive = lbl.dataset.themeName === name;
+      lbl.classList.toggle('is-checked', isActive);
+      const radio = lbl.querySelector('input[type=radio]');
+      if (radio) radio.checked = isActive;
+    });
+  }
+  reflect(current);
+  radios.forEach(r => {
+    r.addEventListener('change', () => {
+      if (r.checked) {
+        EP.applyTheme(r.value);
+        // applyTheme also fires 'ep:theme' below — but our own click is
+        // the source, so we update the picker UI directly here too.
+        reflect(r.value);
+      }
+    });
+  });
+  // If another tab applies a different theme, common.js will fire the
+  // 'ep:theme' event from its storage-sync handler. Catch it here so
+  // the picker stays accurate without us re-reading localStorage.
+  window.addEventListener('ep:theme', (e) => {
+    reflect(e.detail.name);
+  });
+})();
 
 // Initial load + WS
 EP.api('GET', `/api/tournaments/${TID}/state`).then(render).catch(err => {

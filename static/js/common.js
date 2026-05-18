@@ -103,6 +103,57 @@ const EP = {
     // Drop trailing ".0", keep ".5"
     return Number(s) % 1 === 0 ? String(Number(s)) : Number(s).toFixed(1);
   },
+
+  /* ------------- Theme (task #9) -------------
+     The inline script in base.html applies the saved theme during
+     <head> parsing to prevent a flash of the wrong palette. These
+     helpers are for the PICKER on the host page — they keep the
+     attribute, localStorage, meta theme-color, and the picker's
+     own .is-checked classes in sync, and they fire a 'ep:theme'
+     event so any open page on the same machine can react.
+
+     Theme names are validated here too — an unknown name silently
+     resolves to 'forest' rather than poisoning localStorage with a
+     value the inline script wouldn't honor on next load. */
+  THEMES: ['forest', 'royal', 'crimson', 'ivory'],
+  THEME_BG: {
+    forest: '#07100c', royal: '#060914',
+    crimson: '#0a0606', ivory: '#f5f1e8',
+  },
+  getTheme() {
+    try {
+      const t = localStorage.getItem('ep_theme');
+      return this.THEMES.includes(t) ? t : 'forest';
+    } catch (e) { return 'forest'; }
+  },
+  applyTheme(name) {
+    if (!this.THEMES.includes(name)) name = 'forest';
+    // 'forest' is the :root default; removing the attribute is cleaner
+    // than setting it (avoids a redundant selector match).
+    if (name === 'forest') {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', name);
+    }
+    try { localStorage.setItem('ep_theme', name); } catch (e) { /* private mode */ }
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', this.THEME_BG[name]);
+    // Notify any in-page listeners (the picker uses this to flip its
+    // .is-checked class without re-querying the radios).
+    window.dispatchEvent(new CustomEvent('ep:theme', { detail: { name } }));
+  },
 };
 
 window.EP = EP;
+
+// Task #9: cross-tab theme sync. The inline <head> script in base.html
+// applies the saved theme on first paint, but if a page is ALREADY open
+// when another tab changes the theme, it needs to re-theme without a
+// reload. The storage event only fires in OTHER tabs (never the writer),
+// so this is purely for the inheritor. Picker UIs handle their own
+// reflection via the 'ep:theme' event.
+window.addEventListener('storage', function(e) {
+  if (e.key === 'ep_theme') {
+    EP.applyTheme(EP.getTheme());
+  }
+});

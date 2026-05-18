@@ -5,8 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}EnPassant{% endblock %}</title>
   <meta name="description" content="EnPassant — live chess tournaments for the room. Animated leaderboards, dual-confirmation scoring, projector mode.">
-  <meta name="theme-color" content="#07100c">
+  <meta name="theme-color" content="#07100c" id="meta-theme-color">
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+  <!--
+    Task #9 (themes): set data-theme on <html> BEFORE the stylesheet loads.
+    If we waited for common.js (which is at the bottom of <body>), the page
+    would paint with Forest's defaults first and then snap to the chosen
+    theme, which is exactly the flash the inline-snippet pattern exists to
+    prevent. The mobile chrome theme-color meta is updated too, for the
+    same reason — it's read by the browser before any deferred script runs.
+    A guarded try/catch around localStorage: in private-mode Safari it can
+    throw, and a thrown exception in <head> kills the rest of the page.
+  -->
+  <script>
+  (function() {
+    try {
+      var t = localStorage.getItem('ep_theme');
+      var allowed = {forest:1, royal:1, crimson:1, ivory:1};
+      if (t && allowed[t]) {
+        // Forest = default; skip setting the attribute to match what
+        // EP.applyTheme() does, so the DOM looks the same regardless
+        // of whether the theme was applied at first paint or after a click.
+        if (t !== 'forest') {
+          document.documentElement.setAttribute('data-theme', t);
+        }
+        var bgs = {forest:'#07100c', royal:'#060914', crimson:'#0a0606', ivory:'#f5f1e8'};
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m && bgs[t]) m.setAttribute('content', bgs[t]);
+      }
+    } catch (e) { /* localStorage blocked — silently keep Forest defaults */ }
+  })();
+  </script>
   <link rel="stylesheet" href="/static/css/main.css">
   {% block head %}{% endblock %}
 </head>

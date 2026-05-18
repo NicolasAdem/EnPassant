@@ -303,9 +303,128 @@ Nice-to-have, not blocking
 
 Polish, do last
 
-[TODO] 9. Multiple dashboard themes. CSS-only swap. Cool but adds zero
-   functionality. The kind of thing that's fun to build and easy to ship
-   after the engine is solid.
+[DONE] 9. Multiple dashboard themes.
+
+   The brief called this "CSS-only swap" — turned out half-true. About a
+   third of the work was a real CSS-only swap (redefining the existing
+   palette variables under [data-theme="..."]). The other two-thirds was
+   plumbing that had to exist before the swap could work honestly:
+
+     a. The :root palette had 15-ish rgba() literals scattered through
+        main.css and projector.css that DIDN'T read from variables. Things
+        like `rgba(184,255,92,0.25)` on the projector's leader-row glow,
+        the join-form input's `rgba(13,26,20,0.7)` backdrop, the badge
+        borders, the body radial-gradient tints, the result-flash radial.
+        Re-themed pages would have shown ghost green glows on every
+        non-Forest theme without addressing those. So: added a parallel
+        set of variables — --accent-rgb, --moss-rgb, --pine-rgb,
+        --rose-rgb, --gold-rgb, --bg-0-rgb, --bg-1-rgb (RGB triples kept
+        in sync with the hex variables), --grain-rgb / --grain-alpha for
+        the body grid texture, --btn-primary-ink for primary-button text
+        contrast, --lime-hover for the hover swap-in, --bg-deeper for the
+        body gradient base. Then rewrote every theme-bound literal as
+        `rgba(var(--*-rgb), α)`. Generic shadows (rgba(0,0,0,...)) and
+        whites kept literal — they're not theme-dependent.
+
+     b. base.html needed an inline <head> script that reads the saved
+        theme from localStorage and sets data-theme on <html> BEFORE
+        main.css loads. Without this, every page would paint with
+        Forest's defaults for one frame and then snap to the chosen
+        theme — exactly the flash the inline-script pattern is for. The
+        script also flips <meta name="theme-color"> in the same step,
+        because the mobile browser chrome reads that during initial parse
+        too. Whitelisted theme names (`{forest:1, royal:1, crimson:1,
+        ivory:1}`) so a poisoned localStorage value can't apply an
+        arbitrary attribute. Wrapped in try/catch because private-mode
+        Safari throws on localStorage access, and an uncaught throw in
+        <head> kills the rest of the page.
+
+   The four themes shipped:
+     - Forest — the original. :root defaults; [data-theme="forest"] has
+       zero declarations and is byte-identical to before this task.
+     - Royal — deep navy backdrop, warm amber accent. The classic chess
+       club aesthetic.
+     - Crimson — near-black + signal red. Broadcast / drama mode.
+     - Ivory — cream surfaces, charcoal ink, bottle-green accent. For
+       daylight-lit rooms and the unusual case where a TV/projector isn't
+       in a dark room. Required two extra overrides the dark themes
+       didn't: --grain-rgb flips to 0,0,0 with a higher alpha (dark grid
+       on cream needs more contrast than the inverse), and
+       --btn-primary-ink flips to cream so the dark-green primary button
+       has readable text.
+
+   common.js gained EP.THEMES, EP.THEME_BG, EP.getTheme(),
+   EP.applyTheme(name). applyTheme() sets the attribute, writes
+   localStorage, flips the meta tag, and dispatches an 'ep:theme' window
+   event for in-page listeners. Also: a top-level `storage` event listener
+   on every page that catches changes from other tabs (the storage event
+   doesn't fire in the tab that wrote the value, so this is the inheritor
+   side). Net effect: pick Royal on the host dashboard while the
+   projector is open on a TV, and the projector re-themes within ~500ms
+   without a reload. Verified end-to-end with two browser tabs sharing a
+   context.
+
+   host.html got a theme-picker card with four swatches. Each swatch is
+   a small linear-gradient preview of that theme's bg + accent —
+   hardcoded colors there are intentional (they're previews of OTHER
+   themes, so they can't read from the live theme). Picker uses :has()
+   for the checked-state styling in modern browsers, with a parallel
+   .is-checked class for older Safari; the init code keeps both in sync.
+   Subscribes to 'ep:theme' to reflect cross-tab changes back into the
+   picker UI.
+
+   One small consistency fix I caught late: EP.applyTheme('forest')
+   removes the data-theme attribute (treating Forest as the unset
+   default), but the inline anti-flash script was setting it. So an
+   initial-paint Forest and a click-back-to-Forest produced different
+   DOM states — both render identically because [data-theme="forest"]
+   has zero declarations, but it's confusing in devtools. Patched the
+   inline script to also skip-set for Forest. The empty
+   [data-theme="forest"] block in main.css stays — it's unreachable in
+   normal flow but documents intent, and someone forcing the attribute
+   via devtools or a future query-param hook should still get a known
+   selector.
+
+   Projector view (and every other page) inherits all of this through
+   base.html — no per-template wiring needed. The picker only lives on
+   the host dashboard because that's where someone setting up the room
+   would be. Adding a picker to /join or /player would be ~5 lines of
+   HTML each, but isn't motivated.
+
+   Verified:
+     a. Balanced braces in both CSS files (132 in main, 71 in projector).
+     b. Every required variable (bg/ink/accent + all RGB triples + ink-
+        for-primary-button) overridden in royal, crimson, ivory.
+     c. node --check passes on the extracted script blocks from base.html,
+        host.html, projector.html (after Jinja stripping).
+     d. Jinja-render passes for host.html and projector.html with the
+        new templates.
+     e. End-to-end behavior via playwright: setting localStorage to each
+        theme name produces the expected data-theme attribute, the
+        expected meta theme-color value, and visually correct rendering
+        on both host and projector pages.
+     f. Click-through: clicking Royal in the picker updates the DOM
+        attribute, localStorage, meta tag, and is-checked class in one
+        step; clicking back to Forest correctly REMOVES the attribute.
+     g. Cross-tab sync: tab A picks Royal, tab B (projector, already
+        open) re-themes via the storage event handler in common.js.
+     h. Visual screenshots of all 4 themes on host + projector views —
+        each looks coherent and on-brand for its concept.
+
+   Out of scope, logged for later:
+     - "Auto" theme that follows the OS prefers-color-scheme. Trivial to
+       add (matchMedia listener flipping between Forest and Ivory) but
+       wasn't asked for. The current behavior — explicit pick, persisted
+       per-device — matches what a chess club running a tournament would
+       actually want (a deliberate decision for the room, not a switch
+       that flips at sundown).
+     - Per-tournament themes (host picks a theme that's tied to THAT
+       tournament's projector view, not the device). Would need a
+       location_mode-style column on tournaments and a way for the
+       projector to read it from state. The current device-local model
+       is right for the common case (one club, one host laptop, one TV);
+       only matters if a single venue is running multiple tournaments
+       with different themes simultaneously, which is not a thing.
 
 [TODO] 10. "Just happened" rank-change ticker copy. ("Alice climbed from #7
     to #3"). Currently the ticker just shows result messages. Adding rank

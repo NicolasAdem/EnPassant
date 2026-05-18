@@ -142,19 +142,19 @@
 }
 
 .rank-row.rising {
-  background: linear-gradient(180deg, rgba(184,255,92,0.12) 0%, var(--bg-2) 100%);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb),0.12) 0%, var(--bg-2) 100%);
   border-color: var(--lime);
-  box-shadow: 0 0 24px rgba(184, 255, 92, 0.25);
+  box-shadow: 0 0 24px rgba(var(--accent-rgb), 0.25);
 }
 .rank-row.falling {
-  background: linear-gradient(180deg, rgba(217,106,106,0.06) 0%, var(--bg-2) 100%);
-  border-color: rgba(217, 106, 106, 0.3);
+  background: linear-gradient(180deg, rgba(var(--rose-rgb),0.06) 0%, var(--bg-2) 100%);
+  border-color: rgba(var(--rose-rgb), 0.3);
 }
 
 .rank-row.leader {
   border-color: var(--gold);
   background:
-    linear-gradient(180deg, rgba(212,181,114,0.08) 0%, var(--bg-2) 100%);
+    linear-gradient(180deg, rgba(var(--gold-rgb),0.08) 0%, var(--bg-2) 100%);
 }
 
 .rank-num {
@@ -337,7 +337,7 @@
   font-size: clamp(3rem, 8vw, 6rem);
   letter-spacing: 0.3em;
   color: var(--lime);
-  text-shadow: 0 0 32px rgba(184, 255, 92, 0.35);
+  text-shadow: 0 0 32px rgba(var(--accent-rgb), 0.35);
   margin: 2vh 0;
 }
 .proj-empty .qr-large {
@@ -357,7 +357,7 @@
 .round-hero {
   position: fixed;
   inset: 0;
-  background: radial-gradient(circle at center, rgba(184,255,92,0.08), rgba(7,16,12,0.96));
+  background: radial-gradient(circle at center, rgba(var(--accent-rgb),0.08), rgba(var(--bg-0-rgb),0.96));
   backdrop-filter: blur(8px);
   z-index: 100;
   display: flex;
@@ -406,7 +406,7 @@
   inset: 0;
   border-radius: 8px;
   pointer-events: none;
-  background: radial-gradient(circle at center, rgba(184,255,92,0.4), transparent 70%);
+  background: radial-gradient(circle at center, rgba(var(--accent-rgb),0.4), transparent 70%);
   opacity: 0;
   animation: flash-out 1.2s ease-out forwards;
 }

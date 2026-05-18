@@ -531,9 +531,26 @@ def get_state_snapshot(tid: str) -> dict:
     t = get_tournament(tid)
     if not t:
         return {}
+    # Task #8: the projector round timer needs a server-side anchor so it shows
+    # the same elapsed time to every viewer and survives reconnects. The rounds
+    # table already records created_at on insert (SQLite default), so we just
+    # surface it here. SQLite's CURRENT_TIMESTAMP returns "YYYY-MM-DD HH:MM:SS"
+    # in UTC with a space separator; the JS spec only guarantees Date.parse on
+    # the T-separated ISO 8601 variant, so we normalize the space to T and add
+    # the Z UTC marker before sending it over the wire.
+    round_started_at = None
+    if t["current_round"]:
+        with db() as conn:
+            row = conn.execute(
+                "SELECT created_at FROM rounds WHERE tournament_id = ? AND round_number = ?",
+                (tid, t["current_round"]),
+            ).fetchone()
+            if row and row["created_at"]:
+                round_started_at = row["created_at"].replace(" ", "T") + "Z"
     return {
         "tournament": t,
         "players": list_players(tid),
         "current_matches": list_current_round_matches(tid),
         "events": recent_events(tid, 30),
+        "round_started_at": round_started_at,
     }

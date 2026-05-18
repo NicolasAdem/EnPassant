@@ -66,6 +66,13 @@
   color: var(--lime);
 }
 
+/* Task #8: round timer ticks once per second; without tabular numerals the
+   seconds digits jiggle in most display fonts as glyph widths change. Scoped
+   to the timer only — the other stats are static, no need for the override. */
+#proj-elapsed {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Body: leaderboard + matches side by side */
 .proj-body {
   display: grid;

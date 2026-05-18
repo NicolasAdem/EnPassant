@@ -19,6 +19,10 @@
         <div class="stat-label">Round</div>
         <div class="stat-value" id="proj-round">—</div>
       </div>
+      <div class="stat" id="proj-elapsed-stat" style="display: none;">
+        <div class="stat-label">Elapsed</div>
+        <div class="stat-value" id="proj-elapsed">0:00</div>
+      </div>
       <div class="stat">
         <div class="stat-label">Players</div>
         <div class="stat-value" id="proj-players">0</div>
@@ -79,6 +83,11 @@ const RANK_ROW_HEIGHT_BASE = 72; // px when ≤ 10 players
 let lastRanks = new Map(); // player_id -> rank (1-based)
 let tickerQueue = [];
 let tickerSeenIds = new Set();
+// Task #8: round timer. roundStartedAtMs is the server-stamped start time of
+// the current round in epoch ms, or null if no round is active. The ticker
+// runs at 1Hz off this anchor — so every viewer sees the same elapsed time,
+// reconnects don't reset it, and a new round comes in via the state snapshot.
+let roundStartedAtMs = null;
 
 function rowHeight(count) {
   // Squeeze rows when many players
@@ -98,6 +107,11 @@ function render(state, hint) {
   document.getElementById('proj-title').textContent = t.name;
   document.getElementById('proj-round').textContent = t.current_round || '—';
   document.getElementById('proj-players').textContent = players.length;
+
+  // Task #8: anchor the round timer to the server-stamped round start time.
+  // Re-reading from every state snapshot also reseats us correctly when a new
+  // round begins (the server stamp changes) or when we reconnect mid-round.
+  updateRoundStart(state.round_started_at, t.current_round);
 
   // Empty state
   const empty = document.getElementById('empty-overlay');
@@ -274,6 +288,52 @@ function showRoundHero(roundNum, message) {
   hero.classList.add('show');
   setTimeout(() => hero.classList.remove('show'), 3000);
 }
+
+// Task #8: round timer helpers. updateRoundStart is called from render() with
+// whatever the state snapshot contains. When current_round is 0 or no
+// timestamp was provided, we hide the stat — the header looks the same as
+// before this feature in the pre-round state.
+function updateRoundStart(isoString, currentRound) {
+  const statBlock = document.getElementById('proj-elapsed-stat');
+  if (!currentRound || !isoString) {
+    roundStartedAtMs = null;
+    statBlock.style.display = 'none';
+    return;
+  }
+  const ms = Date.parse(isoString);
+  // Date.parse returns NaN on bad input. Don't crash the projector if the
+  // server ever sends something unparseable — just hide the timer.
+  if (isNaN(ms)) {
+    roundStartedAtMs = null;
+    statBlock.style.display = 'none';
+    return;
+  }
+  roundStartedAtMs = ms;
+  statBlock.style.display = '';
+  tickElapsed();  // paint immediately, don't wait for the next interval
+}
+
+function formatElapsed(seconds) {
+  if (seconds < 0) seconds = 0;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  // h:mm:ss past the hour mark; m:ss otherwise. Matches what a sports
+  // clock would do — never wider than 5 chars in the common case.
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function tickElapsed() {
+  if (roundStartedAtMs == null) return;
+  const secs = Math.floor((Date.now() - roundStartedAtMs) / 1000);
+  document.getElementById('proj-elapsed').textContent = formatElapsed(secs);
+}
+
+// 1Hz tick. Cheap; the formatter is a few integer ops and one textContent set.
+setInterval(tickElapsed, 1000);
 
 // Initial fetch + WS
 EP.api('GET', `/api/tournaments/${TID}/state`).then(s => render(s, null)).catch(err => {

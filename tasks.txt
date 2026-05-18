@@ -238,8 +238,68 @@ Nice-to-have, not blocking
    model supports it but there's no UI affordance — would just be a small
    addition to host.html if the chess club wants it.
 
-[TODO] 8. Round timer on projector. Mentioned in the original brief, not
-   built. Genuinely adds drama to the projector view. Pure frontend.
+[DONE] 8. Round timer on projector.
+
+   The brief called this "pure frontend" but it isn't — the state snapshot
+   from get_state_snapshot didn't expose any per-round timestamp, so a
+   client-only timer would either reset on every reconnect or count from
+   page load (meaning a viewer who opens the projector mid-round would see
+   the wrong number). Surfaced the existing rounds.created_at instead, no
+   schema migration needed.
+
+   Backend (tournament.py): get_state_snapshot now reads the current
+   round's created_at and returns it as `round_started_at`. SQLite's
+   CURRENT_TIMESTAMP yields "YYYY-MM-DD HH:MM:SS" in UTC with a space
+   separator; converted to "YYYY-MM-DDTHH:MM:SSZ" before sending. V8
+   tolerates the space form but the ECMAScript spec only guarantees
+   Date.parse on the T-separated ISO 8601 variant — Safari historically
+   returned NaN on the space form. The replace + Z append is the cheapest
+   way to be cross-browser safe. None when no round has started yet.
+   Existing snapshot consumers (host.html, player.html) ignore unknown
+   keys — no regressions.
+
+   Frontend (projector.html):
+     - New "Elapsed" stat block in the header, hidden when current_round
+       is 0 or the timestamp is null/unparseable.
+     - updateRoundStart() called from render() reseats the anchor from
+       every state snapshot, so a new round resets the timer to 0:00 the
+       instant the new round_started_at arrives via WS.
+     - 1Hz setInterval calls tickElapsed() which reads Date.now() minus
+       the anchor — the formatter is integer ops plus one textContent
+       write, cheap enough that there's no point throttling further.
+     - formatElapsed: m:ss under an hour, h:mm:ss past one. Matches a
+       sports clock — projector view, drama, etc.
+     - Defensive: isNaN(Date.parse(...)) check hides the stat instead of
+       crashing if the server ever sends garbage. Won't happen with the
+       current backend, but the projector is the screen people SEE.
+
+   CSS (projector.css): #proj-elapsed gets font-variant-numeric:
+   tabular-nums so the seconds digits don't jiggle as glyph widths change
+   each tick. Same trick already used on .rank-num and .rank-score.
+
+   Verified:
+     a. End-to-end test: created a 3-player onsite tournament, snapshot
+        before round 1 had round_started_at = None (timer hidden); after
+        start_next_round the snapshot returned an ISO-T string within
+        1s of wall clock.
+     b. Round transition: completed round 1 (report + confirm), started
+        round 2 after a 2-second sleep; the new round_started_at was
+        exactly 2s ahead of round 1's. The projector therefore resets to
+        0:00 on round change, which is the right behavior.
+     c. JS Date.parse round-trip: 2026-05-18T05:48:17Z parses correctly
+        in V8 (test via `node -e`).
+     d. node --check on the extracted projector.html script block passes.
+     e. Python compile-check on tournament.py passes.
+     f. State snapshot still returns tournament, players, current_matches,
+        events as before — round_started_at is purely additive.
+
+   Out of scope and logged for later: a *countdown* timer (round time
+   limit, with an alarm when it hits zero) would need a per-tournament
+   round_length_seconds setting, host UI to configure it, and a
+   completion event on the WS broadcast. The brief just said "round
+   timer", and an elapsed-time counter is what's honest about what we
+   know without inventing config. If the club wants countdown, that's a
+   follow-up task.
 
 Polish, do last
 

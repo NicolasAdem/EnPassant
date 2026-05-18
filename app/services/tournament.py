@@ -21,7 +21,14 @@ def _uuid() -> str:
     return uuid.uuid4().hex
 
 
-def create_tournament(name: str, pairing_mode: str = "swiss") -> dict:
+def create_tournament(name: str, pairing_mode: str = "swiss",
+                      location_mode: str = "offsite") -> dict:
+    """Create a tournament.
+
+    location_mode: 'onsite' (physical event with table numbers) or 'offsite'
+    (online / no table UI). Defaults to 'offsite' so callers that don't know
+    about the field get the same behavior as before task #7.
+    """
     tid = _short_id()
     # Ensure uniqueness
     with db() as conn:
@@ -32,11 +39,13 @@ def create_tournament(name: str, pairing_mode: str = "swiss") -> dict:
             tid = _short_id()
         host_token = secrets.token_urlsafe(24)
         conn.execute(
-            "INSERT INTO tournaments (id, name, host_token, pairing_mode) VALUES (?, ?, ?, ?)",
-            (tid, name, host_token, pairing_mode),
+            "INSERT INTO tournaments (id, name, host_token, pairing_mode, location_mode) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (tid, name, host_token, pairing_mode, location_mode),
         )
         _log_event(conn, tid, "tournament_created", f"Tournament '{name}' created.")
-    return {"id": tid, "name": name, "host_token": host_token, "pairing_mode": pairing_mode}
+    return {"id": tid, "name": name, "host_token": host_token,
+            "pairing_mode": pairing_mode, "location_mode": location_mode}
 
 
 def get_tournament(tid: str) -> Optional[dict]:
@@ -156,6 +165,11 @@ def start_next_round(tid: str, mode_override: Optional[str] = None) -> Optional[
     if not pairings and mode != "manual":
         return {"error": "Tournament complete — no more rounds to play."}
 
+    # Task #7: onsite tournaments get table numbers; offsite ones leave them
+    # NULL. We seed table_number from board_number as a sensible default — the
+    # host can edit any individual table afterward via /api/.../matches/{mid}/table.
+    is_onsite = t.get("location_mode") == "onsite"
+
     next_round_num = t["current_round"] + 1
     rid = _uuid()
     with db() as conn:
@@ -171,6 +185,7 @@ def start_next_round(tid: str, mode_override: Optional[str] = None) -> Optional[
             mid = _uuid()
             is_bye = p.get("is_bye", False)
             if is_bye:
+                # Byes have no physical table; table_number stays NULL even onsite.
                 conn.execute(
                     """
                     INSERT INTO matches (id, round_id, tournament_id, board_number,
@@ -185,13 +200,15 @@ def start_next_round(tid: str, mode_override: Optional[str] = None) -> Optional[
                     (p["white_player_id"],),
                 )
             else:
+                table_num = p["board_number"] if is_onsite else None
                 conn.execute(
                     """
-                    INSERT INTO matches (id, round_id, tournament_id, board_number,
+                    INSERT INTO matches (id, round_id, tournament_id, board_number, table_number,
                                          white_player_id, black_player_id, status)
-                    VALUES (?, ?, ?, ?, ?, ?, 'pending')
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
                     """,
-                    (mid, rid, tid, p["board_number"], p["white_player_id"], p["black_player_id"]),
+                    (mid, rid, tid, p["board_number"], table_num,
+                     p["white_player_id"], p["black_player_id"]),
                 )
         _log_event(conn, tid, "round_start", f"Round {next_round_num} pairings posted.", {"round": next_round_num, "mode": mode})
 
@@ -205,6 +222,7 @@ def add_manual_match(tid: str, white_pid: str, black_pid: Optional[str]) -> Opti
     t = get_tournament(tid)
     if not t:
         return None
+    is_onsite = t.get("location_mode") == "onsite"
     with db() as conn:
         # Ensure a current round exists in manual mode
         if t["current_round"] == 0:
@@ -241,13 +259,35 @@ def add_manual_match(tid: str, white_pid: str, black_pid: Optional[str]) -> Opti
             )
             conn.execute("UPDATE players SET score = score + 1 WHERE id = ?", (white_pid,))
         else:
+            table_num = board if is_onsite else None
             conn.execute(
-                """INSERT INTO matches (id, round_id, tournament_id, board_number,
+                """INSERT INTO matches (id, round_id, tournament_id, board_number, table_number,
                     white_player_id, black_player_id, status)
-                   VALUES (?, ?, ?, ?, ?, ?, 'pending')""",
-                (mid, rid, tid, board, white_pid, black_pid),
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')""",
+                (mid, rid, tid, board, table_num, white_pid, black_pid),
             )
         return {"id": mid, "board_number": board, "round_number": round_num}
+
+
+def set_match_table(tid: str, match_id: str, table_number: Optional[int]) -> Optional[dict]:
+    """Set or clear the table_number on a match. Returns the updated row
+    (as a dict) or None if the match doesn't exist in the given tournament.
+
+    The API layer is responsible for range-validating table_number; this
+    function just writes whatever (int or None) is passed in.
+    """
+    with db() as conn:
+        m = conn.execute(
+            "SELECT id FROM matches WHERE id = ? AND tournament_id = ?",
+            (match_id, tid),
+        ).fetchone()
+        if not m:
+            return None
+        conn.execute(
+            "UPDATE matches SET table_number = ? WHERE id = ?",
+            (table_number, match_id),
+        )
+        return {"match_id": match_id, "table_number": table_number}
 
 
 def report_result(match_id: str, reporting_player_id: str, result: str) -> Optional[dict]:

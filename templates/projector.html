@@ -110,7 +110,7 @@ function render(state, hint) {
   }
 
   renderLeaderboard(players, matches);
-  renderMatchList(matches);
+  renderMatchList(matches, t);
   renderTicker(events);
 
   // Round-start hero
@@ -185,8 +185,9 @@ function renderLeaderboard(players, matches) {
   lastRanks = newRanks;
 }
 
-function renderMatchList(matches) {
+function renderMatchList(matches, tournament) {
   const list = document.getElementById('match-list');
+  const onsite = tournament && tournament.location_mode === 'onsite';
   if (!matches.length) {
     list.innerHTML = `
       <div style="text-align: center; padding: 4vh 1vw; color: var(--ink-mute); font-family: var(--font-display); font-style: italic;">
@@ -194,6 +195,16 @@ function renderMatchList(matches) {
       </div>`;
     return;
   }
+  // Inline pill style — projector view doesn't load a separate stylesheet
+  // for this kind of one-off element, and the styling is small enough to
+  // keep alongside its only use.
+  const tablePill = (m) => {
+    if (!onsite || m.table_number == null) return '';
+    return `<span style="display: inline-block; margin-left: 0.6em; padding: 0.12em 0.55em;
+      border: 1px solid var(--lime); border-radius: 999px;
+      font-family: var(--font-mono); font-size: 0.55em; letter-spacing: 0.12em;
+      color: var(--lime); vertical-align: middle;">TABLE ${m.table_number}</span>`;
+  };
   list.innerHTML = matches.map(m => {
     if (m.status === 'bye') {
       return `
@@ -216,7 +227,7 @@ function renderMatchList(matches) {
     if (m.status === 'disputed') badge = '<span class="badge badge-disputed">DISPUTE</span>';
     return `
       <div class="match-row ${statusCls}">
-        <div class="board-num">${m.board_number}</div>
+        <div class="board-num">${m.board_number}${tablePill(m)}</div>
         <div class="player white">${EP.escape(m.white_name)}</div>
         <div class="vs">vs</div>
         <div class="player black">${EP.escape(m.black_name)}</div>

@@ -58,6 +58,11 @@
           <div class="muted" style="font-size: 0.82rem; margin-bottom: 0.3rem;">Or this link:</div>
           <code style="font-family: var(--font-mono); font-size: 0.78rem; color: var(--moss); word-break: break-all;" id="join-link"></code>
         </div>
+        <div id="location-badge" style="margin-top: 0.9rem; display: none;">
+          <span class="eyebrow" style="display: inline-block; padding: 0.25rem 0.55rem; border: 1px solid var(--lime); border-radius: 999px; color: var(--lime); font-size: 0.68rem;">
+            On-site event · tables enabled
+          </span>
+        </div>
       </div>
 
       <!-- Round controls -->
@@ -151,6 +156,10 @@ function render(state) {
   const disputes = matches.filter(m => m.status === 'disputed').length;
   document.getElementById('stat-disputes').textContent = disputes;
 
+  // Location badge (on-site only)
+  const locBadge = document.getElementById('location-badge');
+  if (locBadge) locBadge.style.display = (t.location_mode === 'onsite') ? 'block' : 'none';
+
   // Standings
   document.getElementById('standings-count').textContent = `${players.length} players`;
   document.getElementById('standings').innerHTML = renderStandings(players, t);
@@ -158,7 +167,7 @@ function render(state) {
   // Matches
   document.getElementById('round-info').textContent =
     t.current_round ? `Round ${t.current_round}` : 'Not started';
-  document.getElementById('matches').innerHTML = renderMatches(matches);
+  document.getElementById('matches').innerHTML = renderMatches(matches, t);
 
   // Activity feed
   document.getElementById('activity').innerHTML = renderActivity(state.events || []);
@@ -210,10 +219,37 @@ function renderStandings(players, t) {
   `;
 }
 
-function renderMatches(matches) {
+// Task #7: when the tournament is on-site, every non-bye match row gets a
+// small inline number input next to its board number for editing the table.
+// We commit changes on blur and on Enter; Escape reverts. Offsite events
+// see no table UI at all — the input simply isn't rendered.
+function renderTableEditor(m, onsite) {
+  if (!onsite || m.status === 'bye') return '';
+  const val = (m.table_number != null) ? m.table_number : '';
+  return `
+    <span class="row" style="gap: 0.35rem; align-items: center; margin-left: 0.6rem;">
+      <span class="eyebrow" style="font-size: 0.62rem;">Table</span>
+      <input
+        type="number"
+        min="1"
+        max="9999"
+        value="${val}"
+        data-mid="${m.id}"
+        data-orig="${val}"
+        class="table-input"
+        style="width: 4.2rem; padding: 0.18rem 0.4rem; font-family: var(--font-mono); font-size: 0.82rem; background: transparent; color: var(--lime); border: 1px solid var(--line); border-radius: 4px; text-align: center;"
+        onchange="setTable(this)"
+        onkeydown="tableKey(event, this)"
+        placeholder="—"
+      >
+    </span>`;
+}
+
+function renderMatches(matches, t) {
   if (!matches.length) {
     return '<p class="muted">No matches in progress. Start a round when ready.</p>';
   }
+  const onsite = t && t.location_mode === 'onsite';
   return matches.map(m => {
     if (m.status === 'bye') {
       return `
@@ -253,10 +289,11 @@ function renderMatches(matches) {
     return `
       <div style="padding: 0.8rem 0.4rem; border-top: 1px solid var(--line);">
         <div class="row between" style="align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-          <div class="row" style="gap: 0.8rem; align-items: center;">
+          <div class="row" style="gap: 0.8rem; align-items: center; flex-wrap: wrap;">
             <span class="mono faint">${m.board_number}</span>
             <span><strong>○ ${EP.escape(m.white_name)}</strong> <span class="faint">vs</span> <strong>● ${EP.escape(m.black_name)}</strong></span>
             ${resultText}
+            ${renderTableEditor(m, onsite)}
           </div>
           ${statusBadge}
         </div>
@@ -309,8 +346,6 @@ async function startRound() {
   btn.textContent = 'Starting…';
   try {
     if (mode === 'manual') {
-      // For manual, we don't auto-pair; we just open the round (or do nothing — it opens on first manual match)
-      // Try start_round with manual to open an empty round
       await EP.api('POST', `/api/tournaments/${TID}/rounds?host_token=${encodeURIComponent(TOKEN)}`, { mode_override: 'manual' });
     } else {
       await EP.api('POST', `/api/tournaments/${TID}/rounds?host_token=${encodeURIComponent(TOKEN)}`, { mode_override: mode });
@@ -367,8 +402,48 @@ async function addManualMatch() {
   }
 }
 
+// Task #7: table-number editing. Commits on blur and on Enter. Escape reverts
+// to whatever value the input had on render, without hitting the API. The
+// data-orig attribute lets us distinguish "no change" from "user touched it"
+// so we don't fire requests when the user just clicks in and tabs out.
+async function setTable(input) {
+  const mid = input.dataset.mid;
+  const orig = input.dataset.orig;
+  const raw = input.value.trim();
+  if (raw === orig) return;  // no change
+  const num = raw === '' ? null : parseInt(raw, 10);
+  if (num !== null && (isNaN(num) || num < 1 || num > 9999)) {
+    EP.toast('Table number must be 1–9999.', 'error');
+    input.value = orig;
+    return;
+  }
+  try {
+    await EP.api('POST', `/api/tournaments/${TID}/matches/${mid}/table?host_token=${encodeURIComponent(TOKEN)}`,
+      { table_number: num });
+    input.dataset.orig = (num == null) ? '' : String(num);
+    // No toast on success — silent saves feel right for an inline edit; the
+    // updated number echoing back via WS broadcast is confirmation enough.
+  } catch (err) {
+    EP.toast(err.message, 'error');
+    input.value = orig;
+  }
+}
+
+function tableKey(ev, input) {
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    input.blur();  // triggers onchange
+  } else if (ev.key === 'Escape') {
+    ev.preventDefault();
+    input.value = input.dataset.orig;
+    input.blur();
+  }
+}
+
 window.removePlayer = removePlayer;
 window.hostResolve = hostResolve;
+window.setTable = setTable;
+window.tableKey = tableKey;
 
 document.getElementById('btn-start-round').addEventListener('click', startRound);
 document.getElementById('btn-end-tournament').addEventListener('click', endTournament);

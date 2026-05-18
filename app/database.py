@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
     status TEXT NOT NULL DEFAULT 'lobby', -- lobby | active | finished
     pairing_mode TEXT NOT NULL DEFAULT 'swiss', -- swiss | random | manual
     current_round INTEGER NOT NULL DEFAULT 0,
+    location_mode TEXT NOT NULL DEFAULT 'offsite', -- offsite | onsite (controls table-number UI)
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -75,6 +76,7 @@ CREATE TABLE IF NOT EXISTS matches (
     round_id TEXT NOT NULL,
     tournament_id TEXT NOT NULL,
     board_number INTEGER NOT NULL,
+    table_number INTEGER,  -- physical table the match is played at; NULL for offsite events
     white_player_id TEXT,  -- nullable for bye
     black_player_id TEXT,  -- nullable for bye
     result TEXT,           -- 'white' | 'black' | 'draw' | 'bye'
@@ -119,6 +121,14 @@ def _migrate(conn):
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     add_column("players", "sonneborn_berger", "REAL NOT NULL DEFAULT 0")
+    # Task #7: on-site / off-site location mode + per-match table numbers.
+    # Existing tournaments default to 'offsite', which means table-number UI
+    # stays hidden — preserves the previous behavior exactly.
+    add_column("tournaments", "location_mode", "TEXT NOT NULL DEFAULT 'offsite'")
+    # table_number is nullable on purpose (no NOT NULL): offsite matches never
+    # have one, and SQLite can't add a NOT NULL column without a default on an
+    # existing table anyway.
+    add_column("matches", "table_number", "INTEGER")
 
 
 def init_db():

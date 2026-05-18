@@ -155,10 +155,88 @@ Nice-to-have, not blocking
    of producing all-bye rounds, that's a tournament.py UX change, not a
    pairing.py change. Logged for later.
 
-[TODO] 7. On-site / off-site setting + table numbers. Useful for the chess-
-   club case but cosmetic — the tournament works without it. Schema change
-   (location_mode on tournaments, table_number on matches), UI changes on
-   host create, host dashboard, projector, player view.
+[DONE] 7. On-site / off-site setting + table numbers.
+
+   Schema: added `location_mode TEXT NOT NULL DEFAULT 'offsite'` to the
+   tournaments table and `table_number INTEGER` (nullable) to the matches
+   table. Both go through the existing `_migrate` helper's `add_column`
+   so dev DBs from before this task get the new columns automatically —
+   existing tournaments default to 'offsite' (no UI change for them) and
+   existing matches keep table_number NULL. Migration verified against a
+   hand-built pre-task-7 DB: all pre-existing rows survived intact.
+
+   Backend (tournament.py):
+     - create_tournament(name, pairing_mode, location_mode='offsite').
+       Default keeps callers that don't pass it working.
+     - start_next_round: for non-bye matches, seeds table_number from
+       board_number when onsite, leaves NULL when offsite. Byes never get
+       a table_number — there's no physical seat to assign to a bye.
+     - add_manual_match: same rule.
+     - New set_match_table(tid, mid, table_number) for host edits.
+
+   API (api.py):
+     - CreateTournamentReq gained location_mode; validated against
+       ('offsite', 'onsite') with a 400 for anything else.
+     - New POST /api/tournaments/{tid}/matches/{mid}/table, host-only.
+       Range-validates 1..9999 (or null to clear). Broadcasts state on
+       success so other connected clients see the new number.
+     - Both endpoints exercised end-to-end via FastAPI TestClient
+       (15 endpoint cases including auth, 404, range, defaults).
+
+   Frontend:
+     - new.html: an "Online / remote" vs "On-site (with tables)" segmented
+       toggle, with a contextual hint. Defaults to offsite, sends
+       location_mode on submit.
+     - host.html: each non-bye match row gets an inline number input next
+       to its board number when onsite. Commit on Enter or blur; Escape
+       reverts; out-of-range numbers toast and revert. Also a small
+       "On-site event · tables enabled" badge on the join card so the
+       host can see at a glance which mode the tournament is in.
+     - projector.html: a "TABLE N" pill next to the board number on each
+       live match row, but ONLY when location_mode is onsite AND the match
+       has a table_number. Offsite events look exactly as they did before.
+     - player.html: when onsite, the in-progress card now says "Find your
+       seat at Table N" above the colour assignment.
+
+   The state snapshot already returns tournament.* and matches.* so
+   location_mode and table_number flow through to all three views without
+   any pages.py changes.
+
+   One thing I almost shipped and walked back: an early version of
+   host.html had a guard that suppressed re-renders whenever a table input
+   was focused, to prevent keystroke loss mid-edit. The guard was too
+   broad — it would have frozen the entire dashboard (standings,
+   activity, every other panel) for as long as the host had focus in a
+   table input. Removed it. The trade-off is that if a WS broadcast
+   arrives while the host is mid-typing in a table field, those
+   keystrokes are lost; but broadcasts only happen on actual server
+   events (joins, results, other edits) and the loss is harmless
+   (retype). Worse to freeze every panel for the same protection.
+
+   Verified:
+     a. Fresh DB: schema has new columns.
+     b. Pre-task-7 DB: migrated cleanly, existing data intact, existing
+        tournaments default to 'offsite' (preserves old behaviour).
+     c. Idempotency: init_db can be re-run without error.
+     d. Onsite tournament: table_number seeded to board_number on round
+        start, host can override via API, change persists.
+     e. Offsite tournament: table_number stays NULL after round start.
+        (The API does still accept assignments to offsite matches — only
+        the UI hides the editor. Means a host who creates a tournament
+        offsite by mistake can fix it without recreating, and any future
+        "switch a tournament to onsite" flow is unblocked.)
+     f. Byes: never assigned a table_number, even onsite.
+     g. Out-of-range numbers (0, negative, >9999) rejected with 400.
+     h. Endpoint requires host token; 403 without it.
+     i. Regression: task #3 join → report → confirm flow still works on
+        a default (offsite) tournament. Task #4 tiebreaks still computed.
+     j. JS syntax in all four templates validated with `node --check`.
+     k. All templates Jinja-render with the new hooks present.
+
+   Out of scope and logged for later: actively toggling a tournament's
+   location_mode after creation (the UI doesn't expose it). The data
+   model supports it but there's no UI affordance — would just be a small
+   addition to host.html if the chess club wants it.
 
 [TODO] 8. Round timer on projector. Mentioned in the original brief, not
    built. Genuinely adds drama to the projector view. Pure frontend.

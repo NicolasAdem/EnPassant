@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api")
 class CreateTournamentReq(BaseModel):
     name: str
     pairing_mode: str = "swiss"  # swiss | round_robin | random | manual
+    location_mode: str = "offsite"  # offsite | onsite
 
 
 class AddPlayerReq(BaseModel):
@@ -52,6 +53,10 @@ class HostResolveReq(BaseModel):
     result: str
 
 
+class SetTableReq(BaseModel):
+    table_number: Optional[int] = None  # null clears the table number
+
+
 # ---------- Helpers ----------
 
 async def _broadcast_state(tid: str, event: Optional[dict] = None):
@@ -73,7 +78,9 @@ async def create_tournament(req: CreateTournamentReq):
         raise HTTPException(400, "Tournament name required.")
     if req.pairing_mode not in ("swiss", "round_robin", "random", "manual"):
         raise HTTPException(400, "Invalid pairing mode.")
-    t = svc.create_tournament(req.name.strip()[:60], req.pairing_mode)
+    if req.location_mode not in ("offsite", "onsite"):
+        raise HTTPException(400, "Invalid location mode.")
+    t = svc.create_tournament(req.name.strip()[:60], req.pairing_mode, req.location_mode)
     return t
 
 
@@ -179,6 +186,20 @@ async def resolve(tid: str, mid: str, req: HostResolveReq, host_token: Optional[
     if "error" in res:
         raise HTTPException(400, res["error"])
     await _broadcast_state(tid, {"kind": "confirmed", "message": "Host resolved the match.", "match_id": mid})
+    return res
+
+
+@router.post("/tournaments/{tid}/matches/{mid}/table")
+async def set_match_table(tid: str, mid: str, req: SetTableReq, host_token: Optional[str] = None):
+    """Host edits the table number for a single match. Only meaningful for
+    onsite tournaments; offsite tournaments simply hide the UI for this."""
+    _require_host(tid, host_token)
+    if req.table_number is not None and (req.table_number < 1 or req.table_number > 9999):
+        raise HTTPException(400, "Table number must be between 1 and 9999.")
+    res = svc.set_match_table(tid, mid, req.table_number)
+    if res is None:
+        raise HTTPException(404, "Match not found.")
+    await _broadcast_state(tid)
     return res
 
 

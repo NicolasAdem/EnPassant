@@ -48,6 +48,18 @@
             Swiss pairs by score group: 1 vs 33, 2 vs 34… Best for competitive events.
           </div>
         </div>
+        <div>
+          <label>Where is this event?</label>
+          <div class="segmented" role="radiogroup">
+            <input type="radio" name="location" id="loc-offsite" value="offsite" checked>
+            <label for="loc-offsite">Online / remote</label>
+            <input type="radio" name="location" id="loc-onsite" value="onsite">
+            <label for="loc-onsite">On-site (with tables)</label>
+          </div>
+          <div class="faint" style="font-size: 0.82rem; margin-top: 0.6rem;" id="location-hint">
+            Online: players show up via the join QR; no table numbers.
+          </div>
+        </div>
         <button class="btn btn-primary btn-lg" type="submit">Create tournament →</button>
       </form>
     </div>
@@ -105,15 +117,26 @@ pcountInput.addEventListener('input', () => {
   }
 });
 
+const locationHints = {
+  offsite: 'Online: players show up via the join QR; no table numbers.',
+  onsite: 'On-site: each pairing gets a table number. You can edit tables per match from the host dashboard.',
+};
+document.querySelectorAll('input[name=location]').forEach(r => {
+  r.addEventListener('change', () => {
+    document.getElementById('location-hint').textContent = locationHints[r.value];
+  });
+});
+
 document.getElementById('create-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = document.getElementById('tname').value.trim();
   const mode = document.querySelector('input[name=mode]:checked').value;
+  const location_mode = document.querySelector('input[name=location]:checked').value;
   if (!name) return;
   const btn = e.target.querySelector('button');
   btn.disabled = true;
   try {
-    const t = await EP.api('POST', '/api/tournaments', { name, pairing_mode: mode });
+    const t = await EP.api('POST', '/api/tournaments', { name, pairing_mode: mode, location_mode });
     location.href = `/host/${t.id}?token=${encodeURIComponent(t.host_token)}`;
   } catch (err) {
     EP.toast(err.message, 'error');

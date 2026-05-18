@@ -72,14 +72,18 @@ function render(state) {
   }
 
   // Show each match (usually one)
-  content.innerHTML = matches.map(renderMatch).join('');
+  content.innerHTML = matches.map(m => renderMatch(m, t)).join('');
 }
 
-function renderMatch(m) {
+function renderMatch(m, tournament) {
   const isWhite = m.white_player_id === PID;
   const oppName = isWhite ? m.black_name : m.white_name;
   const myColor = isWhite ? 'white' : 'black';
   const oppColor = isWhite ? 'black' : 'white';
+  const onsite = tournament && tournament.location_mode === 'onsite';
+  const tableLine = (onsite && m.table_number != null)
+    ? `<p class="muted" style="margin-bottom: 0.4rem;">Find your seat at <strong style="color: var(--lime);">Table ${m.table_number}</strong>.</p>`
+    : '';
 
   if (m.status === 'bye') {
     return `
@@ -163,6 +167,7 @@ function renderMatch(m) {
         <span class="badge badge-pending">In progress</span>
       </div>
       <h3 style="margin-bottom: 1.5rem;">vs ${EP.escape(oppName)}</h3>
+      ${tableLine}
       <p class="muted" style="margin-bottom: 0.4rem;">You play <strong style="color: var(--ink); text-transform: capitalize;">${myColor}</strong>. Opponent plays ${oppColor}.</p>
       <p class="eyebrow" style="margin-top: 1.4rem; margin-bottom: 0.8rem;">When the game ends, tap the result:</p>
       <div class="col" style="gap: 0.6rem;">

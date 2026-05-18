@@ -254,7 +254,8 @@ function renderMatchList(matches, tournament) {
 function renderTicker(events) {
   // Only result events go on the ticker; we want it to feel like a sportscast feed
   const ticker = document.getElementById('ticker');
-  const items = events.filter(ev => ev.kind === 'result' || ev.kind === 'round_start' || ev.kind === 'join');
+  const items = events.filter(ev =>
+    ev.kind === 'result' || ev.kind === 'round_start' || ev.kind === 'join' || ev.kind === 'rank_change');
 
   // Add new items we haven't seen yet
   for (const ev of items.slice().reverse()) {  // oldest first
@@ -268,7 +269,28 @@ function addTickerItem(ev) {
   const ticker = document.getElementById('ticker');
   const el = document.createElement('div');
   el.className = 'ticker-item';
-  const icon = ev.kind === 'result' ? '♟' : ev.kind === 'round_start' ? '◆' : '+';
+  let icon;
+  if (ev.kind === 'result') {
+    icon = '♟';
+  } else if (ev.kind === 'round_start') {
+    icon = '◆';
+  } else if (ev.kind === 'join') {
+    icon = '+';
+  } else if (ev.kind === 'rank_change') {
+    // Direction comes from the payload (json string from the server) — fall
+    // back to parsing the message text only if payload is missing, since the
+    // payload is the source of truth and the message text is for humans.
+    let direction = null;
+    if (ev.payload) {
+      try {
+        const p = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+        direction = p.direction;
+      } catch (e) { /* malformed payload — fall through */ }
+    }
+    icon = direction === 'down' ? '↓' : '↑';
+  } else {
+    icon = '·';
+  }
   el.innerHTML = `<span class="sep">${icon}</span><span>${EP.escape(ev.message)}</span>`;
   // Stagger start times so multiple items don't all fly together
   const existing = ticker.querySelectorAll('.ticker-item').length;

@@ -362,12 +362,38 @@ def host_resolve_match(tid: str, match_id: str, result: str) -> Optional[dict]:
         return {"match_id": match_id, "status": "confirmed", "result": result}
 
 
+def _current_ranks(conn, tid: str) -> dict:
+    """Return {player_id: rank} for the tournament, using the canonical standings
+    sort key (the same ORDER BY as list_players). Used by _finalize_match to
+    compute rank-change deltas for the ticker.
+
+    Re-running the SQL sort instead of re-implementing it in Python guarantees
+    the ticker copy ("climbed from #7 to #3") agrees with what the projector
+    leaderboard actually shows. Ties are broken by SQLite's ordering of the
+    final key (name ASC), so each player gets a unique rank — same as the
+    leaderboard.
+    """
+    rows = conn.execute(
+        "SELECT id FROM players WHERE tournament_id = ? "
+        "ORDER BY score DESC, buchholz DESC, sonneborn_berger DESC, elo DESC, name ASC",
+        (tid,),
+    ).fetchall()
+    return {r["id"]: i + 1 for i, r in enumerate(rows)}
+
+
 def _finalize_match(conn, match_id: str, confirmer: str):
     """Internal: mark confirmed, update player scores, log event, recompute tiebreaks."""
     m = dict(conn.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone())
     result = m["result"]
     white_id = m["white_player_id"]
     black_id = m["black_player_id"]
+
+    # Task #10: snapshot pre-result ranks so we can emit "climbed from #X to #Y"
+    # ticker copy. Taken BEFORE we apply scores — this is the ranking the room
+    # is currently looking at on the projector. The post-result snapshot below
+    # is taken after _recompute_tiebreaks so it agrees with the leaderboard
+    # the projector is about to re-render.
+    ranks_before = _current_ranks(conn, m["tournament_id"])
 
     # Apply scores
     if result == "white":
@@ -400,6 +426,49 @@ def _finalize_match(conn, match_id: str, confirmer: str):
     _log_event(conn, m["tournament_id"], "result", msg,
                {"match_id": match_id, "result": result,
                 "white": wname, "black": bname, "white_id": white_id, "black_id": black_id})
+
+    # Task #10: emit rank_change events for players whose standing actually
+    # moved. We check both participants (the only two players whose ranks can
+    # change from this result, since scores propagate to buchholz/SB only via
+    # opponent scores which are unaffected by THIS match's confirmation).
+    # Wait — that's wrong: _recompute_tiebreaks rebuilds buchholz/SB for every
+    # player from opponent scores, and an opponent's score CHANGED, so a third
+    # player who has previously played white or black can also have their
+    # tiebreak (and therefore rank) shift. We compare the full rank map and
+    # emit a rank_change for anyone who moved, capped to keep the ticker
+    # readable in pathological cases.
+    ranks_after = _current_ranks(conn, m["tournament_id"])
+    name_lookup = {white_id: wname}
+    if black_id:
+        name_lookup[black_id] = bname
+    # Emit deltas. Sort by largest absolute movement first; cap at 4 to avoid
+    # flooding the ticker if a result reshuffles a crowded field via tiebreaks.
+    deltas = []
+    for pid, after in ranks_after.items():
+        before = ranks_before.get(pid)
+        if before is None or before == after:
+            continue
+        deltas.append((pid, before, after, abs(after - before)))
+    deltas.sort(key=lambda d: -d[3])
+    for pid, before, after, _mag in deltas[:4]:
+        # Look up the name if we haven't already (third-party players whose
+        # ranks shifted via tiebreak recompute won't be in name_lookup yet).
+        if pid not in name_lookup:
+            r = conn.execute("SELECT name FROM players WHERE id = ?", (pid,)).fetchone()
+            if not r:
+                continue
+            name_lookup[pid] = r["name"]
+        pname = name_lookup[pid]
+        if after < before:
+            direction = "up"
+            rank_msg = f"{pname} climbed from #{before} to #{after}"
+        else:
+            direction = "down"
+            rank_msg = f"{pname} dropped from #{before} to #{after}"
+        _log_event(conn, m["tournament_id"], "rank_change", rank_msg,
+                   {"player_id": pid, "name": pname,
+                    "from_rank": before, "to_rank": after,
+                    "direction": direction})
 
 
 def _recompute_tiebreaks(conn, tid: str):

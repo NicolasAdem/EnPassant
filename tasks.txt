@@ -426,9 +426,96 @@ Polish, do last
        only matters if a single venue is running multiple tournaments
        with different themes simultaneously, which is not a thing.
 
-[TODO] 10. "Just happened" rank-change ticker copy. ("Alice climbed from #7
-    to #3"). Currently the ticker just shows result messages. Adding rank
-    deltas is one function in the result-recording flow.
+[DONE] 10. "Just happened" rank-change ticker copy. ("Alice climbed from #7
+    to #3").
+
+    Backend (tournament.py):
+      - New _current_ranks(conn, tid) helper: returns {player_id: rank} using
+        the same ORDER BY as list_players (score DESC, buchholz DESC,
+        sonneborn_berger DESC, elo DESC, name ASC). Re-running the SQL sort
+        instead of re-implementing it in Python guarantees the ticker copy
+        agrees with what the projector leaderboard actually shows — float-
+        equality on buchholz between two languages was the trap to avoid.
+      - _finalize_match snapshots ranks BEFORE applying the score update
+        (this is what the room is looking at right now), then snapshots
+        AFTER _recompute_tiebreaks (this is what they're about to see).
+        For every player whose rank actually moved, emits a 'rank_change'
+        event with message "X climbed from #N to #M" / "X dropped from
+        #N to #M" and a payload of {player_id, name, from_rank, to_rank,
+        direction}.
+      - Cap of 4 rank_change events per finalize. With 32 players and a
+        Buchholz cascade, in pathological cases a single result can shift
+        many ranks via tiebreak recompute (Buchholz reads opponent scores,
+        and an opponent's score just changed). Sorted by |delta| DESC so
+        the biggest movements survive the cap.
+
+    Design decision worth flagging: rank changes are emitted for ALL
+    players who moved, not just the two in the match. That includes
+    "Carol climbed from #3 to #2 after losing to Alice" — which happens
+    because Carol's Buchholz jumps when Alice's score does (her one
+    opponent now has more points). This is mathematically correct per
+    FIDE Buchholz, and matches what the projector leaderboard will show.
+    The alternative — silently moving Carol up without an explanation —
+    is worse: spectators look at the leaderboard, see Carol jumped,
+    have no idea why. A chess club host running Swiss with Buchholz
+    tiebreaks will read "Carol climbed" as exactly the right thing: a
+    strength-of-schedule shift. Honest > snappy.
+
+    Frontend (projector.html):
+      - renderTicker's filter now includes kind === 'rank_change'.
+      - addTickerItem reads payload.direction (parsing the JSON string
+        from the server, falling through if malformed) and picks '↑' for
+        up, '↓' for down. Existing icons unchanged: ♟ for result, ◆ for
+        round_start, + for join.
+      - Stagger and 22s auto-removal apply uniformly — a result event
+        and its rank_change events appear in sequence with 1.5s offsets,
+        which reads like a broadcast (the play, then the standings
+        consequence).
+
+    Schema: no changes. New events flow through the existing events
+    table; the projector dedupes by event id; the WebSocket broadcast
+    layer carries them without modification.
+
+    Verified (test_rank_change.py, 7 cases):
+      a. Basic rank climb: 4 players, white wins both round-1 matches,
+         the upset (Dave beats Bob) produces "Dave climbed from #4" and
+         "Bob dropped from #2".
+      b. No rank change → no event: 2 players draw, ELO breaks the tie
+         same way as before, zero rank_change events emitted.
+      c. 8 players, 4 matches: cap respected, all events well-formed
+         (from_rank != to_rank, direction agrees with rank delta sign).
+      d. Message format matches /^.+ (climbed|dropped) from #\d+ to #\d+$/.
+      e. rank_change events are returned in get_state_snapshot under
+         'events' — projector receives them via the same WS path as
+         every other event.
+      f. Task #3 result events still emitted, with the same message
+         format ("Alice beat Bob" / "Bob beat Alice" / "Alice drew Bob").
+      g. Round 1 first result produces sensible rank changes relative to
+         the score+bye+ELO baseline (3 players, one bye; the playing
+         loser's correct drop relative to the bye recipient surfaces).
+
+    Also verified:
+      - python -c "import ast; ast.parse(...)" on tournament.py: clean.
+      - node --check on the extracted projector.html script block
+        (Jinja expressions substituted): clean.
+      - Jinja-render of projector.html with the new template: clean.
+      - End-to-end snapshot trace: a 2-match round produces 2 result
+        events plus their interleaved rank_change events, all with valid
+        payloads, all reaching the snapshot the projector consumes.
+      - Existing snapshot keys (tournament, players, current_matches,
+        events, round_started_at) all still present and unchanged.
+      - Tasks #3, #4, #7, #8 features (location_mode, tiebreaks, round
+        timer, dispute flow) untouched by this change.
+
+    Out of scope and logged for later:
+      - Suppressing rank_change events when many players shift in lock-
+        step (e.g. four-way reshuffle on a single result). The cap of 4
+        per finalize keeps it bounded, but the ticker can still feel
+        busy on a chaotic round. A "group these into one event" pass
+        ("Three players shifted on tiebreak") would be a follow-up.
+      - A configurable verb tone (energetic "climbed"/"dropped" vs neutral
+        "moved up to #3"). Current copy is broadcast-style by intent; if
+        a club wants a quieter tone, a 5-line change in addTickerItem.
 
 [TODO] 11. Color balance refinement in Swiss. Current _assign_colors is
     reasonable but doesn't track "consecutive same color" — FIDE Swiss

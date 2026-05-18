@@ -35,22 +35,118 @@ def _color_counts(player_id: str, past_matches: List[dict]) -> Tuple[int, int]:
     return whites, blacks
 
 
+def _color_streak(player_id: str, past_matches: List[dict]) -> Tuple[Optional[str], int]:
+    """Return (color, length) for the trailing same-color streak this player
+    is currently riding. ('white', 2) means the last two non-bye games were
+    both as white. (None, 0) means no non-bye games played yet.
+
+    Byes are neutral: a player who played W, then byed, then played W is on
+    a streak of 2 white. This matches FIDE's convention for color preference
+    — the bye-getter has no color, so it can't reset a streak.
+
+    past_matches is assumed in chronological order (insertion order from the
+    SQLite SELECT) — same assumption _last_color makes.
+
+    Used by _assign_colors to avoid three-in-a-row of one color (task #11).
+    """
+    color: Optional[str] = None
+    length = 0
+    for m in reversed(past_matches):
+        if m.get("result") == "bye":
+            continue
+        if m["white_player_id"] == player_id:
+            this = "white"
+        elif m["black_player_id"] == player_id:
+            this = "black"
+        else:
+            continue
+        if color is None:
+            color = this
+            length = 1
+        elif this == color:
+            length += 1
+        else:
+            break
+    return color, length
+
+
 def _assign_colors(p1: dict, p2: dict, past_matches: List[dict]) -> Tuple[str, str]:
-    """Return (white_id, black_id) trying to balance colors."""
-    w1, b1 = _color_counts(p1["id"], past_matches)
-    w2, b2 = _color_counts(p2["id"], past_matches)
+    """Return (white_id, black_id) trying to balance colors.
+
+    Priority order (task #11):
+      1. Avoid three-in-a-row of one color. If exactly one player is on a
+         same-color streak of 2+, they get the OPPOSITE color. If both are
+         on streaks of OPPOSITE colors, the assignment is forced (each gets
+         their preferred opposite — which is mutually compatible).
+      2. Player with fewer whites so far gets white. (Cumulative balance —
+         existing behavior pre-task-11. Also covers FIDE's "color difference
+         must not exceed ±3" constraint implicitly: once one player is at
+         +3 whites, this rule keeps giving them black until it's not.)
+      3. On equal whites: player with more blacks gets white. (Same intent
+         as rule 2 — closes the |whites - blacks| gap.)
+      4. Deterministic by id.
+
+    The streak check sits ABOVE the cumulative check rather than as a
+    tiebreaker below it, because the cumulative-balance rule is symmetric
+    around 0 — when two players have played the same number of rounds, they
+    almost always have equal whites, and the tiebreaker chain falls through
+    to lexicographic id, which is exactly where 3-in-a-row sneaks in. By
+    asking about the streak first, we catch the case the cumulative rule
+    can't see. When NEITHER player has a 2-streak (which is the common case
+    in any tournament under 4 rounds, and the majority case generally), this
+    function returns the same answer as the pre-task-11 version.
+    """
+    p1_id, p2_id = p1["id"], p2["id"]
+
+    # --- Rule 1: streak avoidance ---
+    c1, l1 = _color_streak(p1_id, past_matches)
+    c2, l2 = _color_streak(p2_id, past_matches)
+    p1_needs_break = (l1 >= 2)  # player 1 is on a 2-streak of c1, wants ~c1
+    p2_needs_break = (l2 >= 2)  # player 2 is on a 2-streak of c2, wants ~c2
+
+    if p1_needs_break and p2_needs_break:
+        # Both on streaks. Only resolvable if their streaks are opposite
+        # colors. (c1="white" and c2="black" → p1 needs black, p2 needs
+        # white; perfectly compatible.) If they're on streaks of the SAME
+        # color, exactly one of them must extend to a 3-streak — there's no
+        # way around it. Fall through to cumulative balance for that case;
+        # the player with fewer total whites takes the unwanted extension,
+        # which keeps the global ±whites count closer to balance.
+        if c1 != c2:
+            # p1 wants the opposite of c1; p2 wants the opposite of c2.
+            # If c1=="white", p1 gets black, p2 gets white.
+            if c1 == "white":
+                return p2_id, p1_id
+            else:
+                return p1_id, p2_id
+        # else: both on same-color streak — fall through to rule 2
+    elif p1_needs_break:
+        # p1 is on a 2-streak; give them the opposite.
+        if c1 == "white":
+            return p2_id, p1_id  # p1 gets black
+        else:
+            return p1_id, p2_id  # p1 gets white
+    elif p2_needs_break:
+        if c2 == "white":
+            return p1_id, p2_id  # p2 gets black
+        else:
+            return p2_id, p1_id  # p2 gets white
+
+    # --- Rules 2-4: pre-task-11 cumulative balance, unchanged ---
+    w1, b1 = _color_counts(p1_id, past_matches)
+    w2, b2 = _color_counts(p2_id, past_matches)
     # Player with fewer whites gets white.
     if w1 < w2:
-        return p1["id"], p2["id"]
+        return p1_id, p2_id
     if w2 < w1:
-        return p2["id"], p1["id"]
+        return p2_id, p1_id
     # Tie: player with more blacks gets white
     if b1 > b2:
-        return p1["id"], p2["id"]
+        return p1_id, p2_id
     if b2 > b1:
-        return p2["id"], p1["id"]
+        return p2_id, p1_id
     # Still tied: deterministic by id
-    return (p1["id"], p2["id"]) if p1["id"] < p2["id"] else (p2["id"], p1["id"])
+    return (p1_id, p2_id) if p1_id < p2_id else (p2_id, p1_id)
 
 
 def _have_played(p1_id: str, p2_id: str, past_matches: List[dict]) -> bool:

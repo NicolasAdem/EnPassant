@@ -1,238 +1,315 @@
-EnPassant — task log (trimmed for audit)
+EnPassant — task log
 
-Status legend: [DONE] = implemented and self-verified. Audit target: confirm
-each claim is true of the current codebase. Logged-for-later items at the
-end are deliberately deferred — NOT bugs.
+Status legend:
+  [DONE]    implemented and verified (Codex audit pass)
+  [DONE*]   implemented but Codex flagged a discrepancy — see note
+  [TODO]    pending
+  [BUG]     bug found by Codex audit — pending fix
 
 ================================================================
-Must-have
+PENDING — Chat A: Critical (security / data integrity)
+================================================================
+
+[BUG] A1. host_token leak via WebSocket broadcasts.
+  File: app/routers/api.py:62
+  _broadcast_state() sends svc.get_state_snapshot() without scrubbing
+  tournament.host_token, while HTTP state and the initial WS state
+  explicitly scrub it. Any projector/player WS subscriber receives the
+  host token after the next broadcast and can then call host-only
+  endpoints.
+  Fix: scrub host_token in _broadcast_state() the same way the initial
+  WS state and HTTP state already do. Centralize the scrub so the three
+  paths can't diverge again.
+  Test to add: a WS subscriber on a non-host channel never sees
+  host_token in any frame, including post-broadcast.
+
+[BUG] A2. XSS via player name in host.html inline onclick.
+  File: templates/host.html:245
+  Player names are interpolated into an inline onclick after EP.escape().
+  A name like  );alert(1);//  becomes &#39;);alert(1);// in HTML, which
+  the browser decodes back to ' inside the event handler, breaking out
+  of the string and executing script on the host dashboard. The attack
+  vector is real: any joining player picks their own name.
+  Fix: remove the inline onclick. Bind the handler in JS with
+  addEventListener, keep the name in a data-* attribute or look it up
+  by player id from state. The HTML-escape-then-decode trap goes away
+  once the value never appears inside an attribute literal.
+  Test to add: render host.html with a player named  );alert(1);//
+  and confirm no script executes (smoke test or a regex check that
+  no player-name interpolation appears inside an attribute value).
+
+[BUG] A3. Disputed matches can bypass host resolution.
+  File: app/services/tournament.py:304
+  report_result() rejects only confirmed and bye, so a disputed match
+  can be overwritten back to 'reported'. confirm_result() can then
+  finalize it, bypassing the /matches/{mid}/resolve flow that Task 12
+  claimed was the only path out of dispute.
+  Fix: report_result() must also reject status='disputed'. Once a match
+  is disputed, only the host's resolve endpoint can move it.
+  Test to add: report -> dispute -> re-report attempt must 4xx (or
+  whatever the existing rejection shape is). Confirm flow is closed
+  until resolve runs.
+
+================================================================
+PENDING — Chat B: Correctness (invariant violations)
+================================================================
+
+[BUG] B1. set_match_table accepts byes.
+  File: app/services/tournament.py:280
+  Task 7 invariant: "Byes never get a table_number." set_match_table()
+  only checks match id / tournament id, then updates ANY match including
+  status='bye'. A host POST to /matches/{bye_mid}/table with
+  {"table_number": 7} succeeds.
+  Fix: reject status='bye' in set_match_table() with a clear error
+  (4xx at the API layer). The api.py wrapper at
+  POST /api/tournaments/{tid}/matches/{mid}/table should surface the
+  rejection.
+  Test to add: end-to-end — onsite tournament, start round, attempt to
+  set a table on the bye match, expect 4xx and DB unchanged.
+
+[BUG] B2. Swiss bye-recipient chosen before pool pairability check.
+  File: app/services/pairing.py:238
+  Task 2 invariant: "zero emergency byes when a perfect matching exists."
+  Codex repro: with 5 players, past pairs
+    {p00-p02, p01-p03, p03-p00, p01-p04, p00-p04, p02-p01}
+  and scores p00=3, p01=1.5, p02=1.5, p03=2, p04=1, pair_swiss returns
+  p04-p03 plus EMERGENCY BYES for p00, p02, p01. A valid one-bye round
+  exists: bye p02, pair p00-p01 and p03-p04.
+  Root cause: bye recipient is chosen by the Task 6 selector
+  (bye_count, score, elo) without considering whether the remaining
+  n-1 pool admits a perfect matching against the rematch graph.
+  Fix sketch: when n is odd, try each candidate bye recipient in the
+  Task 6 priority order, and accept the first whose REMOVAL leaves the
+  remaining pool with a perfect matching (via _max_matching). Fall
+  through to the current behavior only if no candidate works.
+  Test to add: the Codex repro case in test_swiss.py, plus a
+  regression that the Task 6 bye-fairness ordering is preserved
+  whenever the priority-1 candidate is feasible.
+
+[BUG] B3. Bye score updates skip _recompute_tiebreaks.
+  Files: app/services/tournament.py:197 and app/services/tournament.py:260
+  Task 4 invariant: tiebreaks are recomputed on every finalize. But
+  the bye-score paths bump the bye'd player's score without calling
+  _recompute_tiebreaks. Any previous opponent of the bye'd player has
+  stale Buchholz/SB until some later non-bye match finalizes for that
+  opponent.
+  Fix: call _recompute_tiebreaks at both bye-update sites. Same trigger
+  as _finalize_match.
+  Test to add: 4-player Swiss, round 1 normal, round 2 awards a bye
+  to a player whose round-1 opponent has confirmed games; verify the
+  opponent's Buchholz/SB reflect the bye'd player's new score
+  immediately after the bye finalizes, not only after a later match.
+
+[BUG] B4. report/confirm ignore {tid} in path.
+  Files: app/routers/api.py:155 and app/routers/api.py:167
+  The report and confirm routes look up the match by match_id only,
+  ignoring the {tid} segment. Posting a valid match/player pair under
+  the WRONG tournament id mutates the real match but then broadcasts
+  the wrong tournament's state — connected clients see desynced data,
+  and the audit log shows the action attributed to the wrong
+  tournament.
+  Fix: verify the match's tournament_id matches the path {tid} before
+  mutating. Reject with 404 (or 400 — match your existing convention)
+  on mismatch.
+  Test to add: report endpoint called with a real match_id under a
+  different tournament's tid returns 4xx and does not mutate.
+
+================================================================
+PENDING — Chat C: Discrepancies + missing tests + tasks.txt cleanup
+================================================================
+
+[TODO] C1. Add round-robin coverage to tests.
+  Task 1's verification claim refers to n=2..16 but test_swiss.py does
+  not actually exercise the round-robin path. Add a test_round_robin.py
+  (or extend test_swiss.py with a round_robin section) that verifies:
+    - circle-method schedule produces a full round-robin in n-1 rounds
+      (even n) or n rounds (odd n, with byes)
+    - color balance within ±1 (even) / ±2 (odd)
+    - no rematches across the schedule
+    - byes distributed (odd n: each player byes exactly once)
+  Cover n=2 through n=16.
+
+[TODO] C2. Reconstitute tests/test_rank_change.py.
+  Task 10 claims a tests/test_rank_change.py file exists and verifies
+  7 cases. It's absent. Either it was lost or never committed. Rewrite
+  to the 7 cases described in tasks.txt history (basic climb, no-
+  change-no-event, 8-player cap respected, message format regex,
+  snapshot delivery, result events still emitted, round 1 baseline).
+
+[TODO] C3. Reconcile _backtrack reference in tasks.txt history.
+  Task 2 description mentions _backtrack as the function being rewritten.
+  The current pairing.py has no _backtrack — the rewrite replaced it
+  with _max_matching / _greedy_matching. Not a code bug; tasks.txt
+  clarity issue. Either remove the historical bug list from Task 2 or
+  annotate it as "(pre-rewrite, for context)".
+
+================================================================
+DONE
 ================================================================
 
 [DONE] 1. Round-robin pairing mode.
   Files: app/services/pairing.py, app/routers/api.py, templates/new.html
-  - Circle-method schedule, byes for odd n, color balance within ±1
-    (even n) / ±2 (odd n). No schema changes.
-  - Tests: test_swiss.py covers round-robin path; n=2 through n=16.
+  Circle-method schedule, byes for odd n, color balance within ±1
+  (even n) / ±2 (odd n). No schema changes.
+  Codex note: implementation verified, test coverage gap → see C1.
 
-[DONE] 2. Swiss algorithm (proper rewrite).
-  Files: app/services/pairing.py
-  Key implementation points to verify:
-    a. _backtrack worst-case baseline uses list(group), not list(top),
-       so bottom-half players don't vanish.
+[DONE*] 2. Swiss algorithm (proper rewrite).
+  File: app/services/pairing.py
+  Implementation points:
+    a. matching baseline uses list(group), not list(top), so bottom-
+       half players don't vanish.
     b. Floater cascade carries the entire unmatched remainder between
        score groups, not just one player.
-    c. _max_matching does full maximum-matching search over the group
-       (not just permuting the bottom half). _greedy_matching is the
-       fallback for groups >14 players.
+    c. _max_matching does full maximum-matching search; _greedy_matching
+       is the fallback for groups >14 players.
     d. After the score-group cascade, if anyone is still unmatched,
        _pair_group is retried on the full pool (step 6) before any
        emergency bye is emitted.
   Tests: test_swiss.py, check_optimality.py, test_quality.py.
-  Invariant: zero rematches, zero missing players, zero emergency byes
-  except when logically impossible (e.g. n=3 with 5 rounds).
-
-================================================================
-Should-have
-================================================================
+  Invariant: zero rematches, zero missing players, zero emergency
+  byes except when logically impossible.
+  Codex notes:
+    - The bye-before-pairability path violates the invariant — see B2.
+    - Historical _backtrack references in this entry are stale — see C3.
 
 [DONE] 3. QR join + live ticker end-to-end.
   Files: app/routers/api.py, templates/join.html, templates/player.html,
          templates/projector.html
-  - QR PNG embeds /join/{tid}; join form POSTs to
-    /api/tournaments/{tid}/players; localStorage stores player id;
-    redirects to /player/{tid}/{pid}.
-  - _log_event writes ticker rows; get_state_snapshot returns them
-    under 'events'; projector.html's renderTicker dedupes by id and
-    filters on result/round_start/join.
-  - api.py: 'round_robin' is accepted in both create_tournament and
-    start_round mode_override.
-  - api.py QR endpoint builds a QRCode object explicitly and saves
-    with a positional arg (qrcode version-stable).
-  - join.html "already joined" check reads state.players for the
-    stored id; clears stale localStorage entry on miss (does NOT
-    rely on /players/{id}/matches, which returns 200 [] for any id).
+  QR PNG embeds /join/{tid}; join form POSTs to
+  /api/tournaments/{tid}/players; localStorage stores player id;
+  redirects to /player/{tid}/{pid}.
+  _log_event writes ticker rows; get_state_snapshot returns them under
+  'events'; projector renderTicker dedupes by id and filters on
+  result/round_start/join.
+  api.py accepts 'round_robin' in create_tournament and start_round
+  mode_override. QR endpoint builds QRCode object explicitly.
+  join.html "already joined" check reads state.players, clears stale
+  localStorage on miss.
 
-[DONE] 4. Buchholz + Sonneborn-Berger tiebreaks.
+[DONE*] 4. Buchholz + Sonneborn-Berger tiebreaks.
   Files: app/database.py, app/services/tournament.py, templates/host.html,
          templates/projector.html, tests/test_tiebreaks.py
-  - players table has `sonneborn_berger REAL NOT NULL DEFAULT 0`,
-    added via idempotent _migrate helper (PRAGMA table_info guard).
-  - _recompute_tiebreaks computes both tiebreaks in one pass per
-    player; called from _finalize_match.
-  - Definitions:
-      Buchholz: sum of distinct opponents' final scores. Byes excluded.
-      SB: sum over each game of (opponent_score * weight) where
-          weight = 1.0 / 0.5 / 0.0 for win / draw / loss. Byes excluded.
-  - list_players sorts by:
-      score DESC, buchholz DESC, sonneborn_berger DESC, elo DESC, name ASC
-  - UI: host.html standings has SB column next to BH; projector
-    leaderboard shows "BH X · SB Y".
+  players.sonneborn_berger REAL NOT NULL DEFAULT 0, via idempotent
+  _migrate (PRAGMA table_info guard).
+  _recompute_tiebreaks computes both in one pass per player, called
+  from _finalize_match.
+  Definitions:
+    Buchholz: sum of distinct opponents' final scores. Byes excluded.
+    SB: sum over each game of (opponent_score * weight) where
+        weight = 1.0 / 0.5 / 0.0 for win / draw / loss. Byes excluded.
+  list_players sorts by:
+    score DESC, buchholz DESC, sonneborn_berger DESC, elo DESC, name ASC
+  UI: host.html SB column next to BH; projector shows "BH X · SB Y".
+  Codex note: bye paths skip the recompute trigger — see B3.
 
 [DONE] 5. Recommended-mode hint on /new.
   Files: templates/new.html
-  - Player-count field suggests Round-robin (≤12) or Swiss (>12) and
-    auto-selects the radio if the host hasn't picked manually.
+  Player-count field suggests Round-robin (≤12) or Swiss (>12) and
+  auto-selects the radio if the host hasn't picked manually.
 
-================================================================
-Nice-to-have
-================================================================
-
-[DONE] 6. Bye handling polish.
+[DONE*] 6. Bye handling polish.
   Files: app/services/pairing.py
-  - _bye_count and _select_bye_recipient helpers. Recipient chosen by
-    (bye_count ASC, score ASC, elo ASC). Applied to both pair_swiss
-    and pair_random. Keeps field's bye counts within ±1 as long as
-    legal pairings exist.
+  _bye_count and _select_bye_recipient helpers. Recipient chosen by
+  (bye_count ASC, score ASC, elo ASC). Applied to pair_swiss and
+  pair_random. Keeps field's bye counts within ±1 while legal pairings
+  exist.
+  Codex note: ordering is correct, but Swiss applies it before
+  checking pool pairability — see B2.
 
-[DONE] 7. On-site / off-site setting + table numbers.
+[DONE*] 7. On-site / off-site setting + table numbers.
   Files: app/database.py, app/services/tournament.py, app/routers/api.py,
          templates/new.html, templates/host.html, templates/projector.html,
          templates/player.html
-  - tournaments.location_mode TEXT NOT NULL DEFAULT 'offsite' (via
-    _migrate add_column).
-  - matches.table_number INTEGER (nullable, via _migrate).
-  - create_tournament accepts location_mode (default 'offsite').
-  - start_next_round and add_manual_match seed table_number from
-    board_number when onsite; NULL when offsite. Byes never get a
-    table_number.
-  - set_match_table(tid, mid, table_number) host API.
-  - POST /api/tournaments/{tid}/matches/{mid}/table is host-only,
-    validates 1..9999 or null, broadcasts state on success.
-  - new.html: segmented Online/Onsite toggle, defaults offsite.
-  - host.html: inline table-number input per non-bye match when onsite.
-    Commit on Enter/blur; Escape reverts; out-of-range toasts and
-    reverts. "On-site event · tables enabled" badge on join card.
-    NOTE: an earlier "freeze re-renders while a table input is
-    focused" guard was deliberately removed — it would freeze the
-    whole dashboard. Trade-off: keystrokes during a WS broadcast can
-    be lost (retype).
-  - projector.html: "TABLE N" pill next to board number, only when
-    onsite AND match has a table_number.
-  - player.html: "Find your seat at Table N" above color when onsite.
+  tournaments.location_mode TEXT NOT NULL DEFAULT 'offsite' (via
+  _migrate add_column).
+  matches.table_number INTEGER (nullable, via _migrate).
+  create_tournament accepts location_mode (default 'offsite').
+  start_next_round and add_manual_match seed table_number from
+  board_number when onsite; NULL when offsite. Byes never get a
+  table_number.
+  set_match_table(tid, mid, table_number) host API.
+  POST /api/tournaments/{tid}/matches/{mid}/table validates 1..9999 or
+  null, broadcasts state on success.
+  new.html segmented Online/Onsite toggle. host.html inline table
+  input per non-bye match when onsite. projector.html "TABLE N" pill.
+  player.html "Find your seat at Table N".
+  Codex note: set_match_table accepts byes — see B1.
 
 [DONE] 8. Round timer on projector.
   Files: app/services/tournament.py, templates/projector.html,
          static/css/projector.css
-  - get_state_snapshot returns `round_started_at` from the current
-    round's rounds.created_at. Format normalized: SQLite's space
-    separator replaced with 'T', 'Z' appended (Safari/spec safety).
-    None when no round has started.
-  - projector.html: "Elapsed" stat block, hidden when current_round
-    is 0 or timestamp is null/unparseable.
-  - updateRoundStart() re-anchors from every state snapshot.
-  - 1Hz setInterval + formatElapsed (m:ss under 1h, h:mm:ss past 1h).
-  - projector.css: #proj-elapsed uses font-variant-numeric:tabular-nums.
-
-================================================================
-Polish
-================================================================
+  get_state_snapshot returns round_started_at from current round's
+  rounds.created_at, normalized to ISO with 'T' and 'Z'.
+  projector.html "Elapsed" stat block, hidden when current_round is
+  0 or timestamp null/unparseable. updateRoundStart() re-anchors from
+  every snapshot. 1Hz tick. formatElapsed: m:ss / h:mm:ss.
+  projector.css: tabular-nums on #proj-elapsed.
 
 [DONE] 9. Multiple dashboard themes.
   Files: static/css/main.css, static/css/projector.css, static/js/common.js,
          templates/base.html, templates/host.html
-  - Themes: forest (default, [data-theme="forest"] is empty), royal,
-    crimson, ivory. ivory additionally overrides --grain-rgb (dark on
-    cream) and --btn-primary-ink (cream text on dark-green button).
-  - Variable plumbing: --accent-rgb, --moss-rgb, --pine-rgb, --rose-rgb,
-    --gold-rgb, --bg-0-rgb, --bg-1-rgb, --grain-rgb, --grain-alpha,
-    --btn-primary-ink, --lime-hover, --bg-deeper. All previously-
-    literal theme-bound rgba()s rewritten as rgba(var(--*-rgb), α).
-    Generic shadows and whites stay literal.
-  - base.html inline <head> script reads localStorage and sets
-    data-theme on <html> BEFORE main.css loads. Also flips
-    <meta name="theme-color">. Whitelist {forest,royal,crimson,ivory}.
-    Wrapped in try/catch (private-mode Safari throws on localStorage).
-    Forest case skip-sets the attribute (matches applyTheme behavior).
-  - common.js exports EP.THEMES, EP.THEME_BG, EP.getTheme(),
-    EP.applyTheme(name). applyTheme sets attribute, writes
-    localStorage, flips meta tag, dispatches 'ep:theme'.
-    Top-level 'storage' listener handles cross-tab sync.
-  - host.html theme-picker card uses :has() with a parallel .is-checked
-    class for older Safari; init keeps both in sync. Subscribes to
-    'ep:theme'.
+  Themes: forest (default, empty block), royal, crimson, ivory.
+  ivory overrides --grain-rgb and --btn-primary-ink.
+  RGB-triple variables for all theme-bound rgba() literals.
+  base.html inline <head> script reads localStorage, sets data-theme
+  BEFORE main.css loads, flips meta theme-color, whitelist
+  {forest,royal,crimson,ivory}, try/catch around localStorage.
+  common.js: EP.THEMES, EP.THEME_BG, EP.getTheme(), EP.applyTheme().
+  Cross-tab sync via 'storage' event listener.
+  host.html theme-picker card with :has() + .is-checked fallback.
 
-[DONE] 10. Rank-change ticker copy.
-  Files: app/services/tournament.py, templates/projector.html,
-         tests/test_rank_change.py
-  - _current_ranks(conn, tid) helper returns {player_id: rank} using
-    the SAME SQL ORDER BY as list_players.
-  - _finalize_match snapshots ranks before the score update, snapshots
-    after _recompute_tiebreaks, emits 'rank_change' events for every
-    player whose rank moved. Message: "X climbed from #N to #M" or
-    "X dropped from #N to #M". Payload: {player_id, name, from_rank,
-    to_rank, direction}.
-  - Cap: 4 rank_change events per finalize, sorted by |delta| DESC.
-  - Design choice: rank changes are emitted for ALL movers, not just
-    the two in the match. Buchholz cascades cause non-players to move
-    when an opponent's score changes — this is correct and matches
-    the leaderboard.
-  - renderTicker's filter includes 'rank_change'. addTickerItem parses
-    payload.direction and picks ↑/↓. Existing icons: ♟ result,
-    ◆ round_start, + join.
+[DONE*] 10. Rank-change ticker copy.
+  Files: app/services/tournament.py, templates/projector.html
+  _current_ranks(conn, tid) uses the same SQL ORDER BY as list_players.
+  _finalize_match snapshots ranks before+after score update, emits
+  'rank_change' events for movers. Cap 4 per finalize, sorted by
+  |delta| DESC. Messages: "X climbed from #N to #M" / "X dropped...".
+  renderTicker filter includes 'rank_change'. ↑/↓ icons.
+  Codex note: implementation verified, test file missing → see C2.
 
 [DONE] 11. Color balance refinement in Swiss.
   Files: app/services/pairing.py, tests/test_color_streaks.py
-  - _color_streak(player_id, past_matches): walks newest to oldest,
-    counts trailing non-bye same-color games. Byes are NEUTRAL (skipped,
-    do not reset). Returns (color, length); (None, 0) for no history.
-  - _assign_colors priority-1 streak check ABOVE the cumulative rule:
-      - Exactly one player on a ≥2 same-color streak → they get the
-        opposite color.
-      - Both on opposite-color streaks → forced compatible (each gets
-        their preferred opposite).
-      - Both on same-color streaks → forced extension, falls through
-        to cumulative; lower-whites player takes the extension.
-  - Rules 2-4 (cumulative whites, cumulative blacks, lex id) are
-    byte-identical to pre-task-11.
-  - _assign_colors_rr (round-robin) is untouched — already alternates
-    via _last_color.
-  - pair_random uses _assign_colors → inherits fix for free.
+  _color_streak walks newest to oldest, counts trailing non-bye same-
+  color games; byes neutral (skipped, not reset).
+  _assign_colors priority-1 streak check above cumulative rule:
+    - One on ≥2 streak → opposite color.
+    - Both on opposite streaks → forced compatible.
+    - Both on same streak → forced extension, lower-whites takes it.
+  Rules 2-4 byte-identical to pre-task-11.
+  _assign_colors_rr untouched. pair_random inherits.
 
-[DONE] 12. Player-side dispute UI.
+[DONE*] 12. Player-side dispute UI.
   Files: templates/player.html, app/services/tournament.py
-  - player.html renders ✓ Confirm and ✗ Dispute when opponent has
-    reported a result.
-  - Dispute hits /matches/{mid}/confirm with agree=false.
-  - tournament.py sets status='disputed', logs 'dispute' event.
-  - Host resolves via /matches/{mid}/resolve.
+  Confirm/Dispute buttons when opponent has reported.
+  Dispute hits /matches/{mid}/confirm with agree=false.
+  status='disputed', 'dispute' event logged.
+  Host resolves via /matches/{mid}/resolve.
+  Codex note: disputed matches can be re-reported and bypass host
+  resolve — see A3.
 
 ================================================================
-Out-of-band fixes
+Out-of-band fixes (DONE)
 ================================================================
 
 [DONE] tournament.py: start_next_round returns an error dict when the
-  pairing engine returns no pairings (end-of-round-robin case). Prevents
-  silently creating an empty round and bumping current_round forever.
+  pairing engine returns no pairings (end-of-round-robin case).
 
-[DONE] pairing.py: type-annotation cleanup. paired_so_far holds Optional
-  partners (for emergency byes); ids in _circle_schedule holds an
-  Optional ghost. Unused parameter dropped from _pair_group. No
-  behavior change.
+[DONE] pairing.py: type-annotation cleanup. paired_so_far Optional
+  partners, _circle_schedule Optional ghost, unused _pair_group param
+  dropped. No behavior change.
 
 ================================================================
 Logged for later (deliberately deferred — not bugs)
 ================================================================
 
-- projector.html tickerSeenIds Set grows unbounded. Negligible for a
-  normal event; bound it or reset on round_start if a projector tab
-  ever spans multiple tournaments.
-- "Tournament cannot continue" UX when the field is exhausted (n=3
-  after 3 rounds, etc). Currently the algorithm correctly emits
-  all-bye rounds; a tournament.py UX change to tell the host instead
-  is logged.
-- Countdown round timer (vs the current elapsed-only timer). Needs a
-  per-tournament round_length_seconds setting, host UI, and a
-  completion event.
-- Active toggle of a tournament's location_mode after creation.
-  Data model supports it; no UI affordance.
-- "Median Buchholz" / "Cumulative" tiebreak variants. Additional
-  columns if a club wants them.
-- Suppress/group rank_change events when many shift in lockstep on
-  one result.
-- Configurable rank-change verb tone (energetic vs neutral).
-- Eliminating FORCED color 3-streaks. Needs cost-weighted matching
-  (FIDE Dutch). Change point: _max_matching's leaf scoring.
-- Configurable strict/lenient color mode (per-tournament).
+- projector.html tickerSeenIds Set grows unbounded.
+- "Tournament cannot continue" UX when the field is exhausted.
+- Countdown round timer (vs elapsed-only).
+- Active toggle of location_mode after tournament creation.
+- "Median Buchholz" / "Cumulative" tiebreak variants.
+- Suppress/group rank_change events on lockstep shifts.
+- Configurable rank-change verb tone.
+- Eliminating FORCED color 3-streaks (cost-weighted matching).
+- Configurable strict/lenient color mode per tournament.
 - "Auto" theme tracking prefers-color-scheme.
-- Per-tournament theme (stored on tournament row, projector reads
-  from state instead of localStorage).
+- Per-tournament theme (stored on tournament row).

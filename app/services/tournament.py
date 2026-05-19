@@ -199,6 +199,12 @@ def start_next_round(tid: str, mode_override: Optional[str] = None) -> Optional[
                     "UPDATE players SET score = score + 1 WHERE id = ?",
                     (p["white_player_id"],),
                 )
+                # Task B3: a bye changes the recipient's score, which is an
+                # input to every prior opponent's Buchholz/SB. Without this
+                # recompute, those opponents carry stale tiebreaks until some
+                # later non-bye match of theirs finalizes and re-triggers it
+                # via _finalize_match. Same trigger condition as _finalize_match.
+                _recompute_tiebreaks(conn, tid)
             else:
                 table_num = p["board_number"] if is_onsite else None
                 conn.execute(
@@ -258,6 +264,11 @@ def add_manual_match(tid: str, white_pid: str, black_pid: Optional[str]) -> Opti
                 (mid, rid, tid, board, white_pid),
             )
             conn.execute("UPDATE players SET score = score + 1 WHERE id = ?", (white_pid,))
+            # Task B3: see _finalize_match / start_next_round. A manual bye
+            # changes the recipient's score, so every prior opponent's
+            # Buchholz/SB must be refreshed immediately. Without this, the
+            # opponent's tiebreaks lag until their own next confirmed match.
+            _recompute_tiebreaks(conn, tid)
         else:
             table_num = board if is_onsite else None
             conn.execute(

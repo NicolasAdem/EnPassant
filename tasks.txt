@@ -35,20 +35,6 @@ PENDING — Chat B: Correctness (invariant violations)
   regression that the Task 6 bye-fairness ordering is preserved
   whenever the priority-1 candidate is feasible.
 
-[BUG] B3. Bye score updates skip _recompute_tiebreaks.
-  Files: app/services/tournament.py:197 and app/services/tournament.py:260
-  Task 4 invariant: tiebreaks are recomputed on every finalize. But
-  the bye-score paths bump the bye'd player's score without calling
-  _recompute_tiebreaks. Any previous opponent of the bye'd player has
-  stale Buchholz/SB until some later non-bye match finalizes for that
-  opponent.
-  Fix: call _recompute_tiebreaks at both bye-update sites. Same trigger
-  as _finalize_match.
-  Test to add: 4-player Swiss, round 1 normal, round 2 awards a bye
-  to a player whose round-1 opponent has confirmed games; verify the
-  opponent's Buchholz/SB reflect the bye'd player's new score
-  immediately after the bye finalizes, not only after a later match.
-
 ================================================================
 PENDING — Chat C: Discrepancies + missing tests + tasks.txt cleanup
 ================================================================
@@ -81,6 +67,65 @@ PENDING — Chat C: Discrepancies + missing tests + tasks.txt cleanup
 ================================================================
 DONE
 ================================================================
+
+[DONE] B3. Bye score updates now trigger _recompute_tiebreaks.
+  Files: app/services/tournament.py,
+         tests/test_bye_tiebreak_recompute.py
+  Both bye-score sites — the is_bye branch of start_next_round and the
+  black_pid is None branch of add_manual_match — now call
+    _recompute_tiebreaks(conn, tid)
+  immediately after the
+    UPDATE players SET score = score + 1 WHERE id = ?
+  that awards the bye point. Same trigger condition as _finalize_match,
+  which is the only other place a player score changes.
+
+  Why both sites and not a shared helper: the two writes live in
+  different transaction contexts (start_next_round's bulk INSERT loop
+  vs. add_manual_match's single-match append) and refactoring to share
+  would mean either an extra function call or threading the conn+tid
+  through a helper that's only useful at two callers. The cost of the
+  duplicate two-line fix is lower than the cost of an abstraction; same
+  reasoning the A3 fix used for its two-branch guard.
+
+  Why call _recompute_tiebreaks unconditionally instead of skipping
+  when no prior opponent exists (e.g. round-1 byes): the recompute is a
+  full per-tournament rebuild and is O(players * matches), which the
+  existing _finalize_match path also pays on every confirm. A
+  conditional skip would save work only on round-1 byes — exactly the
+  case where the tournament is smallest. Not worth the branching cost
+  or the risk of a future edit silently skipping the recompute on a
+  case that actually needs it.
+
+  Tests: tests/test_bye_tiebreak_recompute.py — 2 cases.
+    - swiss path: 3-player swiss with distinct ELOs. Round 1 produces
+      one bye + one real match; the real match is confirmed normally.
+      Round 2 is started — by Task-6 bye-fairness, the round-1 byer is
+      excluded, so one of the two round-1 real-match players byes
+      round 2. Assertion: immediately after start_next_round returns
+      (no further finalize triggered), the round-2 bye recipient's
+      round-1 opponent has BH equal to the recipient's new score and
+      SB equal to (game_weight * recipient's new score), computed
+      from the actual pairing-engine output rather than hard-coded
+      names so the test isn't coupled to Task-6's selector internals.
+    - manual path: manual-mode tournament, round 1 has Alice-Bob real
+      and Carol-bye, Alice beats Bob and the match is confirmed. Round
+      2 is opened (manual mode + empty pairings is the allowed path
+      through start_next_round). Bob is given a bye via
+      add_manual_match(bob, None). Assertion: Alice's BH = 1.0 (Bob's
+      new score) and SB = 1.0 (1.0 weight * Bob's new score 1.0)
+      immediately, without any further finalize. Pre-fix both would
+      still read 0.0.
+  Fixture: temp SQLite per test via monkey-patching database.DB_PATH
+  before init_db(), mirroring test_dispute_resolve.py / test_host_token_scrub.py.
+  Tests drive the service layer directly (no TestClient) since the bug
+  surface is purely service-level and add_manual_match has no clean
+  HTTP shape to route through.
+
+  Why _read_player helper instead of list_players: list_players runs
+  the canonical ORDER BY, which would also be valid for these
+  assertions, but a direct SELECT * WHERE id = ? makes the failure
+  output obvious — "expected BH=1.0, got 0.0" rather than the test
+  reader having to deduce which row in a sorted list was meant.
 
 [DONE] B4. report/confirm now verify {tid} matches the match's tournament.
   Files: app/routers/api.py, tests/test_cross_tournament_match.py
@@ -213,7 +258,7 @@ DONE
   list_players sorts by:
     score DESC, buchholz DESC, sonneborn_berger DESC, elo DESC, name ASC
   UI: host.html SB column next to BH; projector shows "BH X · SB Y".
-  Codex note: bye paths skip the recompute trigger — see B3.
+  Codex note: bye paths skip the recompute trigger — see B3 (resolved).
 
 [DONE] 5. Recommended-mode hint on /new.
   Files: templates/new.html

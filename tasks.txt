@@ -10,17 +10,7 @@ Status legend:
 PENDING — Chat A: Critical (security / data integrity)
 ================================================================
 
-[BUG] A3. Disputed matches can bypass host resolution.
-  File: app/services/tournament.py:304
-  report_result() rejects only confirmed and bye, so a disputed match
-  can be overwritten back to 'reported'. confirm_result() can then
-  finalize it, bypassing the /matches/{mid}/resolve flow that Task 12
-  claimed was the only path out of dispute.
-  Fix: report_result() must also reject status='disputed'. Once a match
-  is disputed, only the host's resolve endpoint can move it.
-  Test to add: report -> dispute -> re-report attempt must 4xx (or
-  whatever the existing rejection shape is). Confirm flow is closed
-  until resolve runs.
+(none — A3 resolved, see DONE section)
 
 ================================================================
 PENDING — Chat B: Correctness (invariant violations)
@@ -262,6 +252,39 @@ DONE
 ================================================================
 Out-of-band fixes (DONE)
 ================================================================
+
+[DONE] A3. Disputed matches can bypass host resolution.
+  Files: app/services/tournament.py, tests/test_dispute_resolve.py
+  report_result() previously rejected only status in ('confirmed','bye'),
+  so a 'disputed' match fell through and the UPDATE silently reset it
+  back to 'reported' — at which point confirm_result() would finalize
+  it without ever touching host_resolve_match. The fix adds an explicit
+  second guard: status='disputed' returns
+    {"error": "Match is disputed — only the host can resolve it."}
+  Two branches (rather than folding 'disputed' into the existing
+  "already finalized" message) so each rejection states the actual
+  situation — a disputed match is the opposite of finalized.
+  Other paths re-verified:
+    - confirm_result already guards "status != 'reported'", so the
+      confirm route was never reachable on a disputed match. The A3
+      bug existed *only* because report_result reopened the door by
+      flipping disputed -> reported.
+    - host_resolve_match still accepts 'disputed' (correct — it's the
+      one path that must work).
+  Tests: tests/test_dispute_resolve.py — 5 cases.
+    - re-report on disputed match returns 400 with "host" in detail;
+    - re-report does NOT mutate status/result/reported_by (verified by
+      reading the raw row directly via app.database.db);
+    - symmetry: the *disputing* player also can't backdoor a result;
+    - confirm on a disputed match still rejects (documents the
+      confirm_result invariant so a future refactor of that guard
+      doesn't silently reintroduce A3);
+    - host resolve transitions disputed -> confirmed cleanly with
+      confirmed_by='host'.
+  Verified: 5/5 pass against the fix; 3/5 fail against the original
+  buggy report_result (the two passing pre-fix are the confirm-guard
+  and host-resolve tests, which exercise paths that were never
+  broken — they document the surrounding invariants).
 
 [DONE] A2. XSS via player name in host.html inline onclick.
   Files: templates/host.html, tests/test_xss_host.py

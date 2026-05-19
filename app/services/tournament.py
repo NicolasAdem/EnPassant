@@ -303,6 +303,12 @@ def report_result(match_id: str, reporting_player_id: str, result: str) -> Optio
         m = dict(m)
         if m["status"] in ("confirmed", "bye"):
             return {"error": "Match already finalized."}
+        # Task A3: once a match is disputed, the only path forward is the host's
+        # /matches/{mid}/resolve endpoint. Without this guard, a re-report would
+        # silently reset status back to 'reported' and the next confirm_result()
+        # would finalize it — bypassing host arbitration entirely.
+        if m["status"] == "disputed":
+            return {"error": "Match is disputed — only the host can resolve it."}
         if reporting_player_id not in (m["white_player_id"], m["black_player_id"]):
             return {"error": "Not a participant of this match."}
         conn.execute(

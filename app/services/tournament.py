@@ -596,10 +596,17 @@ def end_tournament(tid: str) -> bool:
 
 
 def get_state_snapshot(tid: str) -> dict:
-    """Full snapshot used on initial WebSocket connection or full page render."""
+    """Full snapshot used on initial WebSocket connection or full page render.
+
+    The host_token is stripped here so every consumer of this function — HTTP
+    state endpoint, initial WS snapshot, and broadcast frames — is safe by
+    default. The host carries its token in the URL (/host/{tid}?token=...),
+    not via state, so nothing downstream needs it.
+    """
     t = get_tournament(tid)
     if not t:
         return {}
+    t.pop("host_token", None)
     # Task #8: the projector round timer needs a server-side anchor so it shows
     # the same elapsed time to every viewer and survives reconnects. The rounds
     # table already records created_at on insert (SQLite default), so we just

@@ -60,7 +60,11 @@ class SetTableReq(BaseModel):
 # ---------- Helpers ----------
 
 async def _broadcast_state(tid: str, event: Optional[dict] = None):
-    """Push a full state snapshot + optional event hint to all subscribers."""
+    """Push a full state snapshot + optional event hint to all subscribers.
+
+    get_state_snapshot strips host_token, so projector/player subscribers
+    never see it (see svc.get_state_snapshot).
+    """
     snapshot = svc.get_state_snapshot(tid)
     await manager.broadcast(tid, {"type": "state", "data": snapshot, "event": event})
 
@@ -99,9 +103,8 @@ async def get_state(tid: str):
     t = svc.get_tournament(tid)
     if not t:
         raise HTTPException(404, "Tournament not found.")
-    state = svc.get_state_snapshot(tid)
-    state["tournament"].pop("host_token", None)
-    return state
+    # get_state_snapshot scrubs host_token at the source.
+    return svc.get_state_snapshot(tid)
 
 
 @router.post("/tournaments/{tid}/players")

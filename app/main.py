@@ -35,9 +35,8 @@ async def websocket_endpoint(websocket: WebSocket, tid: str):
         return
     await manager.connect(tid, websocket)
     try:
-        # Send initial snapshot
+        # Send initial snapshot (get_state_snapshot scrubs host_token).
         snapshot = svc.get_state_snapshot(tid)
-        snapshot["tournament"].pop("host_token", None)
         await websocket.send_json({"type": "state", "data": snapshot, "event": None})
         # Keep alive; we don't expect inbound messages, but consume if any
         while True:

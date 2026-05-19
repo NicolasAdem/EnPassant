@@ -10,19 +10,6 @@ Status legend:
 PENDING — Chat A: Critical (security / data integrity)
 ================================================================
 
-[BUG] A1. host_token leak via WebSocket broadcasts.
-  File: app/routers/api.py:62
-  _broadcast_state() sends svc.get_state_snapshot() without scrubbing
-  tournament.host_token, while HTTP state and the initial WS state
-  explicitly scrub it. Any projector/player WS subscriber receives the
-  host token after the next broadcast and can then call host-only
-  endpoints.
-  Fix: scrub host_token in _broadcast_state() the same way the initial
-  WS state and HTTP state already do. Centralize the scrub so the three
-  paths can't diverge again.
-  Test to add: a WS subscriber on a non-host channel never sees
-  host_token in any frame, including post-broadcast.
-
 [BUG] A2. XSS via player name in host.html inline onclick.
   File: templates/host.html:245
   Player names are interpolated into an inline onclick after EP.escape().
@@ -290,6 +277,18 @@ DONE
 ================================================================
 Out-of-band fixes (DONE)
 ================================================================
+
+[DONE] A1. host_token leak via WebSocket broadcasts (Codex audit).
+  Files: app/services/tournament.py, app/routers/api.py, app/main.py,
+         tests/test_host_token_scrub.py
+  Centralized the scrub: get_state_snapshot now pops host_token before
+  returning. Removed the three redundant downstream scrubs (HTTP state
+  endpoint, initial WS snapshot, and the missing one in _broadcast_state
+  that was the actual leak). get_tournament's own scrub stays — it
+  returns the raw tournament row, not a snapshot.
+  Tests: tests/test_host_token_scrub.py covers all three paths plus a
+  direct unit test on get_state_snapshot. TestClient + temp SQLite per
+  test; first API/WS-level test in the suite.
 
 [DONE] tournament.py: start_next_round returns an error dict when the
   pairing engine returns no pairings (end-of-round-robin case).

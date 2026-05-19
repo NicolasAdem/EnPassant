@@ -278,11 +278,17 @@ def set_match_table(tid: str, match_id: str, table_number: Optional[int]) -> Opt
     """
     with db() as conn:
         m = conn.execute(
-            "SELECT id FROM matches WHERE id = ? AND tournament_id = ?",
+            "SELECT id, status FROM matches WHERE id = ? AND tournament_id = ?",
             (match_id, tid),
         ).fetchone()
         if not m:
             return None
+        # Task 7 invariant: byes never get a table_number. Without this guard
+        # a host POST could attach a physical table to a bye row, which then
+        # shows up on the projector as a real seat and on the player view as
+        # "Find your seat at Table N" for a player who has no opponent.
+        if m["status"] == "bye":
+            return {"error": "Byes cannot have a table number."}
         conn.execute(
             "UPDATE matches SET table_number = ? WHERE id = ?",
             (table_number, match_id),

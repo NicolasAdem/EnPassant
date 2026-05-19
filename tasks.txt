@@ -16,19 +16,6 @@ PENDING — Chat A: Critical (security / data integrity)
 PENDING — Chat B: Correctness (invariant violations)
 ================================================================
 
-[BUG] B1. set_match_table accepts byes.
-  File: app/services/tournament.py:280
-  Task 7 invariant: "Byes never get a table_number." set_match_table()
-  only checks match id / tournament id, then updates ANY match including
-  status='bye'. A host POST to /matches/{bye_mid}/table with
-  {"table_number": 7} succeeds.
-  Fix: reject status='bye' in set_match_table() with a clear error
-  (4xx at the API layer). The api.py wrapper at
-  POST /api/tournaments/{tid}/matches/{mid}/table should surface the
-  rejection.
-  Test to add: end-to-end — onsite tournament, start round, attempt to
-  set a table on the bye match, expect 4xx and DB unchanged.
-
 [BUG] B2. Swiss bye-recipient chosen before pool pairability check.
   File: app/services/pairing.py:238
   Task 2 invariant: "zero emergency byes when a perfect matching exists."
@@ -108,6 +95,32 @@ PENDING — Chat C: Discrepancies + missing tests + tasks.txt cleanup
 ================================================================
 DONE
 ================================================================
+
+[DONE] B1. set_match_table now rejects byes.
+  Files: app/services/tournament.py, app/routers/api.py,
+         tests/test_bye_no_table.py
+  set_match_table now SELECTs status alongside id, and returns
+    {"error": "Byes cannot have a table number."}
+  when status='bye'. The API wrapper at
+  POST /api/tournaments/{tid}/matches/{mid}/table grew the standard
+    if "error" in res: raise HTTPException(400, res["error"])
+  branch — same pattern as report / confirm / resolve. None-return
+  still maps to 404 (match not found), so the two failure modes stay
+  distinct and the error messages explain the actual situation rather
+  than collapsing into a single misleading "match not found".
+  Tests: tests/test_bye_no_table.py — 4 cases.
+    - onsite 3-player round 1 produces one real + one bye match;
+      POST table on the bye returns 400 with "bye" in detail;
+    - the bye row's table_number stays NULL after the rejection
+      (verified by reading the raw row directly via app.database.db,
+      same helper as test_dispute_resolve.py);
+    - real-match table set still works (200, value persisted) — guards
+      against the fix accidentally closing the legitimate path;
+    - clear (table_number=null) on a real match still works — same
+      code path, non-error branch, prevents a future refactor from
+      collapsing the if/else.
+  Fixture: TestClient + temp SQLite per test, mirrors
+  test_dispute_resolve.py and test_host_token_scrub.py.
 
 [DONE] 1. Round-robin pairing mode.
   Files: app/services/pairing.py, app/routers/api.py, templates/new.html
@@ -195,7 +208,7 @@ DONE
   new.html segmented Online/Onsite toggle. host.html inline table
   input per non-bye match when onsite. projector.html "TABLE N" pill.
   player.html "Find your seat at Table N".
-  Codex note: set_match_table accepts byes — see B1.
+  Codex note: set_match_table accepts byes — see B1 (resolved).
 
 [DONE] 8. Round timer on projector.
   Files: app/services/tournament.py, templates/projector.html,

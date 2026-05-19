@@ -202,6 +202,8 @@ async def set_match_table(tid: str, mid: str, req: SetTableReq, host_token: Opti
     res = svc.set_match_table(tid, mid, req.table_number)
     if res is None:
         raise HTTPException(404, "Match not found.")
+    if "error" in res:
+        raise HTTPException(400, res["error"])
     await _broadcast_state(tid)
     return res
 

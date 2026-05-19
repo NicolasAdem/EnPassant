@@ -242,7 +242,7 @@ function renderStandings(players, t) {
             <td style="padding: 0.6rem 0.4rem; text-align: right; font-family: var(--font-mono); color: var(--ink-faint); font-size: 0.85rem;">${EP.formatScore(p.buchholz)}</td>
             <td style="padding: 0.6rem 0.4rem; text-align: right; font-family: var(--font-mono); color: var(--ink-faint); font-size: 0.85rem;">${EP.formatScore(p.sonneborn_berger || 0)}</td>
             <td style="padding: 0.6rem 0.4rem; text-align: right;">
-              ${t.status === 'lobby' ? `<button class="btn btn-ghost" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="removePlayer('${p.id}', '${EP.escape(p.name).replace(/'/g, "\\'")}')">×</button>` : ''}
+              ${t.status === 'lobby' ? `<button class="btn btn-ghost" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" data-action="remove-player" data-pid="${EP.escape(p.id)}" data-name="${EP.escape(p.name)}">×</button>` : ''}
             </td>
           </tr>
         `).join('')}
@@ -266,12 +266,11 @@ function renderTableEditor(m, onsite) {
         min="1"
         max="9999"
         value="${val}"
-        data-mid="${m.id}"
+        data-mid="${EP.escape(m.id)}"
         data-orig="${val}"
+        data-action="table-input"
         class="table-input"
         style="width: 4.2rem; padding: 0.18rem 0.4rem; font-family: var(--font-mono); font-size: 0.82rem; background: transparent; color: var(--lime); border: 1px solid var(--line); border-radius: 4px; text-align: center;"
-        onchange="setTable(this)"
-        onkeydown="tableKey(event, this)"
         placeholder="—"
       >
     </span>`;
@@ -311,9 +310,9 @@ function renderMatches(matches, t) {
       actions = `
         <div class="row" style="gap: 0.4rem; margin-top: 0.6rem; flex-wrap: wrap;">
           <span class="eyebrow" style="font-size: 0.65rem; align-self: center;">Override:</span>
-          <button class="btn btn-ghost" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;" onclick="hostResolve('${m.id}', 'white')">${EP.escape(m.white_name)} wins</button>
-          <button class="btn btn-ghost" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;" onclick="hostResolve('${m.id}', 'draw')">Draw</button>
-          <button class="btn btn-ghost" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;" onclick="hostResolve('${m.id}', 'black')">${EP.escape(m.black_name)} wins</button>
+          <button class="btn btn-ghost" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;" data-action="host-resolve" data-mid="${EP.escape(m.id)}" data-result="white">${EP.escape(m.white_name)} wins</button>
+          <button class="btn btn-ghost" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;" data-action="host-resolve" data-mid="${EP.escape(m.id)}" data-result="draw">Draw</button>
+          <button class="btn btn-ghost" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;" data-action="host-resolve" data-mid="${EP.escape(m.id)}" data-result="black">${EP.escape(m.black_name)} wins</button>
         </div>
       `;
     }
@@ -472,10 +471,36 @@ function tableKey(ev, input) {
   }
 }
 
-window.removePlayer = removePlayer;
-window.hostResolve = hostResolve;
-window.setTable = setTable;
-window.tableKey = tableKey;
+// Event delegation — no inline handlers in rendered HTML. This avoids the
+// HTML-escape-then-decode trap: any user-controlled value (player names,
+// IDs) lives in element text or data-* attributes, never inside a JS
+// string literal in an onclick. Re-rendering innerHTML wipes any per-node
+// listeners we attached before, which is exactly why delegation on the
+// stable parent containers is the right shape here.
+document.getElementById('standings').addEventListener('click', (ev) => {
+  const btn = ev.target.closest('[data-action="remove-player"]');
+  if (!btn) return;
+  removePlayer(btn.dataset.pid, btn.dataset.name);
+});
+document.getElementById('matches').addEventListener('click', (ev) => {
+  const btn = ev.target.closest('[data-action="host-resolve"]');
+  if (!btn) return;
+  hostResolve(btn.dataset.mid, btn.dataset.result);
+});
+// Table inputs: 'change' fires on blur after value mutation. We attach
+// listeners on the matches container with the same delegation pattern
+// so freshly-rendered inputs are covered automatically. 'change' and
+// 'keydown' both bubble, which makes this work.
+document.getElementById('matches').addEventListener('change', (ev) => {
+  const input = ev.target.closest('[data-action="table-input"]');
+  if (!input) return;
+  setTable(input);
+});
+document.getElementById('matches').addEventListener('keydown', (ev) => {
+  const input = ev.target.closest('[data-action="table-input"]');
+  if (!input) return;
+  tableKey(ev, input);
+});
 
 document.getElementById('btn-start-round').addEventListener('click', startRound);
 document.getElementById('btn-end-tournament').addEventListener('click', endTournament);

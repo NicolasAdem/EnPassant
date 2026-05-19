@@ -10,21 +10,6 @@ Status legend:
 PENDING — Chat A: Critical (security / data integrity)
 ================================================================
 
-[BUG] A2. XSS via player name in host.html inline onclick.
-  File: templates/host.html:245
-  Player names are interpolated into an inline onclick after EP.escape().
-  A name like  );alert(1);//  becomes &#39;);alert(1);// in HTML, which
-  the browser decodes back to ' inside the event handler, breaking out
-  of the string and executing script on the host dashboard. The attack
-  vector is real: any joining player picks their own name.
-  Fix: remove the inline onclick. Bind the handler in JS with
-  addEventListener, keep the name in a data-* attribute or look it up
-  by player id from state. The HTML-escape-then-decode trap goes away
-  once the value never appears inside an attribute literal.
-  Test to add: render host.html with a player named  );alert(1);//
-  and confirm no script executes (smoke test or a regex check that
-  no player-name interpolation appears inside an attribute value).
-
 [BUG] A3. Disputed matches can bypass host resolution.
   File: app/services/tournament.py:304
   report_result() rejects only confirmed and bye, so a disputed match
@@ -277,6 +262,45 @@ DONE
 ================================================================
 Out-of-band fixes (DONE)
 ================================================================
+
+[DONE] A2. XSS via player name in host.html inline onclick.
+  Files: templates/host.html, tests/test_xss_host.py
+  Removed every inline event handler (onclick, onchange, onkeydown)
+  from the rendered HTML in host.html. The standings remove-button,
+  the host-resolve override buttons, and the onsite table-number
+  inputs now use data-action / data-pid / data-mid / data-name /
+  data-result attributes and are wired via delegated listeners on
+  the stable #standings and #matches containers (which survive the
+  innerHTML re-renders).
+  Names (and IDs) still pass through EP.escape, but the critical
+  change is that they now land in HTML attribute-value context, not
+  inside a JS string literal. The HTML-escape-then-decode trap is
+  structurally impossible once no value sits inside a '...' or
+  "..." that the JS parser will read.
+  Cleanup: the four `window.X = X` shims at the bottom of the
+  <script> block (removePlayer, hostResolve, setTable, tableKey)
+  were dropped — they only existed to make the inline handlers
+  resolve, and aren't needed now.
+  Tests: tests/test_xss_host.py — 6 cases.
+    - no inline onXxx= handlers anywhere in the template (the
+      structural invariant);
+    - no player-name / opponent-name field interpolated inside a
+      JS string literal (regex with a (?<!=) lookbehind so HTML
+      attribute values don't false-positive);
+    - same check for ID fields;
+    - positive assertions that the data-action / data-pid /
+      data-name / data-mid / data-result attribute names the
+      delegated listener depends on are actually present;
+    - a unit test that simulates the post-fix rendered HTML for
+      hostile names ()  );alert(1);//  ,  <script>...</script>  ,
+      <img onerror=...>, mixed-case <ScRiPt>, attribute-breakout
+      attempts) and asserts entity round-trip + no inline handler
+      survives in the output.
+  Verified: 6/6 pass against the fix; 5/6 fail against the original
+  buggy host.html (the simulated-render test is unit-style and
+  doesn't read the template, so it passes either way — that one
+  documents the safety property of the encoding, the other five
+  catch regressions).
 
 [DONE] A1. host_token leak via WebSocket broadcasts (Codex audit).
   Files: app/services/tournament.py, app/routers/api.py, app/main.py,

@@ -10,6 +10,7 @@ from typing import Optional
 import io
 import qrcode
 
+from ..database import db
 from ..services import tournament as svc
 from ..websocket_manager import manager
 
@@ -72,6 +73,32 @@ async def _broadcast_state(tid: str, event: Optional[dict] = None):
 def _require_host(tid: str, host_token: Optional[str]):
     if not host_token or not svc.verify_host(tid, host_token):
         raise HTTPException(status_code=403, detail="Host token required.")
+
+
+def _require_match_in_tournament(tid: str, mid: str):
+    """Verify the match exists AND belongs to {tid}. Raises 404 on miss.
+
+    Task B4: the report and confirm routes do not require a host token (they
+    are the player-facing scoring endpoints), and pre-fix the service was
+    called with only match_id. That meant a request posted under tournament
+    T_wrong with a real match_id from tournament T_right would mutate the
+    T_right match AND broadcast a state refresh to T_wrong's subscribers —
+    desyncing the wrong tournament's clients and attributing the action to
+    the wrong tournament in the audit log.
+
+    Returning 404 (rather than 400 or 403) for the mismatch case matches the
+    existing "match not found" message these routes already produce when the
+    service returns None — a tid mismatch is, from the caller's standpoint,
+    indistinguishable from the match not existing. It also avoids leaking
+    the fact that the id IS valid in some other tournament.
+    """
+    with db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM matches WHERE id = ? AND tournament_id = ?",
+            (mid, tid),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Match not found.")
 
 
 # ---------- Endpoints ----------
@@ -156,6 +183,7 @@ async def add_manual(tid: str, req: ManualMatchReq, host_token: Optional[str] = 
 
 @router.post("/tournaments/{tid}/matches/{mid}/report")
 async def report(tid: str, mid: str, req: ReportResultReq):
+    _require_match_in_tournament(tid, mid)
     res = svc.report_result(mid, req.player_id, req.result)
     if res is None:
         raise HTTPException(404, "Match not found or invalid result.")
@@ -168,6 +196,7 @@ async def report(tid: str, mid: str, req: ReportResultReq):
 
 @router.post("/tournaments/{tid}/matches/{mid}/confirm")
 async def confirm(tid: str, mid: str, req: ConfirmResultReq):
+    _require_match_in_tournament(tid, mid)
     res = svc.confirm_result(mid, req.player_id, req.agree)
     if res is None:
         raise HTTPException(404, "Match not found.")

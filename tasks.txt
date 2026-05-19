@@ -49,20 +49,6 @@ PENDING — Chat B: Correctness (invariant violations)
   opponent's Buchholz/SB reflect the bye'd player's new score
   immediately after the bye finalizes, not only after a later match.
 
-[BUG] B4. report/confirm ignore {tid} in path.
-  Files: app/routers/api.py:155 and app/routers/api.py:167
-  The report and confirm routes look up the match by match_id only,
-  ignoring the {tid} segment. Posting a valid match/player pair under
-  the WRONG tournament id mutates the real match but then broadcasts
-  the wrong tournament's state — connected clients see desynced data,
-  and the audit log shows the action attributed to the wrong
-  tournament.
-  Fix: verify the match's tournament_id matches the path {tid} before
-  mutating. Reject with 404 (or 400 — match your existing convention)
-  on mismatch.
-  Test to add: report endpoint called with a real match_id under a
-  different tournament's tid returns 4xx and does not mutate.
-
 ================================================================
 PENDING — Chat C: Discrepancies + missing tests + tasks.txt cleanup
 ================================================================
@@ -95,6 +81,58 @@ PENDING — Chat C: Discrepancies + missing tests + tasks.txt cleanup
 ================================================================
 DONE
 ================================================================
+
+[DONE] B4. report/confirm now verify {tid} matches the match's tournament.
+  Files: app/routers/api.py, tests/test_cross_tournament_match.py
+  Added _require_match_in_tournament(tid, mid) helper in api.py alongside
+  the existing _require_host helper. It runs a single
+    SELECT 1 FROM matches WHERE id = ? AND tournament_id = ?
+  and raises HTTPException(404, "Match not found.") on miss. Wired into
+  both the report and confirm routes as the first line of the handler,
+  before svc.report_result / svc.confirm_result.
+
+  Why router-level and not service-level: the two affected service
+  functions (report_result, confirm_result) take only match_id; every
+  other match-mutating service function in tournament.py already takes
+  tid as a parameter (set_match_table, host_resolve_match) and does its
+  own ownership check via "WHERE id = ? AND tournament_id = ?". Pushing
+  the guard into the service would mean changing the signature of these
+  two functions and every caller — a wider blast radius for no extra
+  defense, since the router is the only entry point. Same pattern A3
+  and B1 chose: status checks in service, route-shape checks in router.
+
+  Why 404 not 400: the existing convention in report/confirm is 404 for
+  res is None (match-shaped problems) and 400 for "error" in res
+  (business-logic problems). A tid mismatch is a match-shape problem —
+  the match this tid+mid pair identifies doesn't exist. 404 also avoids
+  leaking the fact that the mid IS valid in some other tournament.
+
+  Added the database import to api.py so the helper can hit SQLite
+  directly without forcing a new service function for one query.
+
+  Tests: tests/test_cross_tournament_match.py — 6 cases.
+    - cross-tournament report returns 404 (the headline regression);
+    - cross-tournament report does NOT mutate the real match row
+      (status, result, reported_by all unchanged — verified by reading
+      the raw row directly via app.database.db, same helper style as
+      test_dispute_resolve.py and test_bye_no_table.py);
+    - cross-tournament confirm returns 404 (sets up a legitimately
+      reported match first, then attempts confirm via wrong tid);
+    - request under a tid that doesn't exist at all also 404s (same
+      code path — guards against a future refactor that special-cases
+      "tournament exists but match is elsewhere" vs "tournament missing"
+      and reintroduces an information leak);
+    - legitimate report under correct tid still works (200, status
+      flips to 'reported') — guards against the fix closing the real
+      path, same pattern as test_bye_no_table.py's "real-match table
+      set still works" case;
+    - broadcast isolation: T_wrong's state snapshot (current_matches
+      AND events) is byte-identical before and after a rejected cross-
+      tournament request, which is the property the audit finding
+      actually cares about — T_wrong's projector/player clients must
+      not see ghost activity.
+  Fixture: TestClient + temp SQLite per test, mirrors
+  test_dispute_resolve.py.
 
 [DONE] B1. set_match_table now rejects byes.
   Files: app/services/tournament.py, app/routers/api.py,

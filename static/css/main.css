@@ -658,6 +658,7 @@ label {
 @media (max-width: 560px) {
   .join-form {
     flex-direction: column;
+    align-items: center;
   }
   .join-form input[type=text] {
     font-size: 1.5rem;

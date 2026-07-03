@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}EnPassant{% endblock %}</title>
   <meta name="description" content="EnPassant — live chess tournaments for the room. Animated leaderboards, dual-confirmation scoring, projector mode.">
-  <meta name="theme-color" content="#07100c" id="meta-theme-color">
+  <meta name="theme-color" content="#16201a" id="meta-theme-color">
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
   <!--
     Task #9 (themes): set data-theme on <html> BEFORE the stylesheet loads.
@@ -21,15 +21,15 @@
   (function() {
     try {
       var t = localStorage.getItem('ep_theme');
-      var allowed = {forest:1, royal:1, crimson:1, ivory:1};
+      var allowed = {chessboard:1, forest:1, ivory:1, 'mono-light':1, 'mono-dark':1};
       if (t && allowed[t]) {
-        // Forest = default; skip setting the attribute to match what
+        // Chessboard = default; skip setting the attribute to match what
         // EP.applyTheme() does, so the DOM looks the same regardless
         // of whether the theme was applied at first paint or after a click.
-        if (t !== 'forest') {
+        if (t !== 'chessboard') {
           document.documentElement.setAttribute('data-theme', t);
         }
-        var bgs = {forest:'#07100c', royal:'#060914', crimson:'#0a0606', ivory:'#f5f1e8'};
+        var bgs = {chessboard:'#16201a', forest:'#07100c', ivory:'#f5f1e8', 'mono-light':'#ffffff', 'mono-dark':'#0a0a0a'};
         var m = document.querySelector('meta[name="theme-color"]');
         if (m && bgs[t]) m.setAttribute('content', bgs[t]);
       }

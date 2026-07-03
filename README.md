@@ -9,8 +9,10 @@ Casual chess tournaments for you and your friends. Create a lobby, share a code,
 - **Dual-confirmation scoring** — one player reports the result, the opponent confirms or disputes, the host arbitrates
 - **Teams mode** — split into 2–4 sides; teammates never face each other and each team's score is the sum of its members'
 - **Locked pairing mode** — pick Swiss, Round-robin, Random or Manual at creation; it stays fixed so standings stay coherent (with a recommendation based on your headcount)
-- **A settings drawer** — rename the tournament, switch themes, set a background image for your group, and share links
-- **Shareable spectator link** — anyone can watch the projector view live, no login needed
+- **Automatic rounds** — optionally let the next round start on its own once every game is confirmed
+- **A settings drawer** — rename the tournament, toggle auto-rounds, switch themes (chessboard green by default, plus minimalist light/dark), upload or link a background image for your group, and share links
+- **Play as host** — tick "I'm playing too" and the host joins their own event
+- **Shareable Leaderboard link** — players (and spectators) open the live leaderboard from their lobby; anyone can watch, no login needed
 
 ## Run it
 

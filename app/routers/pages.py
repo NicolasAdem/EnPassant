@@ -133,3 +133,15 @@ async def projector_page(request: Request, tid: str):
     return templates.TemplateResponse(request, "projector.html", {
         "tid": tid, "tournament_name": t["name"],
     })
+
+
+@router.get("/leaderboard/{tid}", response_class=HTMLResponse)
+async def leaderboard_page(request: Request, tid: str):
+    """Public live leaderboard — same view as the projector, but a friendlier
+    URL that players can open from their lobby without being the host."""
+    t = svc.get_tournament(tid)
+    if not t:
+        raise HTTPException(404, "Tournament not found.")
+    return templates.TemplateResponse(request, "projector.html", {
+        "tid": tid, "tournament_name": t["name"],
+    })

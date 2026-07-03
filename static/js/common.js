@@ -115,22 +115,22 @@ const EP = {
      Theme names are validated here too — an unknown name silently
      resolves to 'forest' rather than poisoning localStorage with a
      value the inline script wouldn't honor on next load. */
-  THEMES: ['forest', 'royal', 'crimson', 'ivory'],
+  THEMES: ['chessboard', 'forest', 'ivory', 'mono-light', 'mono-dark'],
   THEME_BG: {
-    forest: '#07100c', royal: '#060914',
-    crimson: '#0a0606', ivory: '#f5f1e8',
+    chessboard: '#16201a', forest: '#07100c', ivory: '#f5f1e8',
+    'mono-light': '#ffffff', 'mono-dark': '#0a0a0a',
   },
   getTheme() {
     try {
       const t = localStorage.getItem('ep_theme');
-      return this.THEMES.includes(t) ? t : 'forest';
-    } catch (e) { return 'forest'; }
+      return this.THEMES.includes(t) ? t : 'chessboard';
+    } catch (e) { return 'chessboard'; }
   },
   applyTheme(name) {
-    if (!this.THEMES.includes(name)) name = 'forest';
-    // 'forest' is the :root default; removing the attribute is cleaner
+    if (!this.THEMES.includes(name)) name = 'chessboard';
+    // 'chessboard' is the :root default; removing the attribute is cleaner
     // than setting it (avoids a redundant selector match).
-    if (name === 'forest') {
+    if (name === 'chessboard') {
       document.documentElement.removeAttribute('data-theme');
     } else {
       document.documentElement.setAttribute('data-theme', name);

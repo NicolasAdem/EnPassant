@@ -2,6 +2,9 @@
 enpassant.db
 *.db
 
+# User-uploaded background images
+static/uploads/
+
 # Python
 __pycache__/
 *.py[cod]

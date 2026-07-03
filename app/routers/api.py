@@ -3,11 +3,13 @@ HTTP API endpoints. Frontend talks to these via fetch().
 WebSocket lives in main.py.
 """
 
-from fastapi import APIRouter, HTTPException, Request, Response, Depends
+from fastapi import APIRouter, HTTPException, Request, Response, Depends, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List
+from pathlib import Path
 import io
+import secrets
 import qrcode
 
 from ..database import db
@@ -17,6 +19,10 @@ from .auth import require_user_api
 
 
 router = APIRouter(prefix="/api")
+
+UPLOAD_DIR = Path(__file__).parent.parent.parent / "static" / "uploads"
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+_UPLOAD_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}
 
 
 # ---------- Models ----------
@@ -44,6 +50,10 @@ class RenameReq(BaseModel):
 
 class BackgroundReq(BaseModel):
     url: Optional[str] = None
+
+
+class AutoRoundsReq(BaseModel):
+    enabled: bool
 
 
 class ManualMatchReq(BaseModel):
@@ -84,6 +94,16 @@ async def _broadcast_state(tid: str, event: Optional[dict] = None):
 def _require_host(tid: str, host_token: Optional[str]):
     if not host_token or not svc.verify_host(tid, host_token):
         raise HTTPException(status_code=403, detail="Host token required.")
+
+
+async def _maybe_auto_advance(tid: str):
+    """If auto-rounds is enabled and the round just completed, start the next one
+    and broadcast it. No-op otherwise."""
+    advanced = svc.auto_advance_if_ready(tid)
+    if advanced:
+        await _broadcast_state(tid, {"kind": "round_start",
+                                     "message": f"Round {advanced['round_number']} started ({advanced['mode']}).",
+                                     "round": advanced["round_number"]})
 
 
 def _require_match_in_tournament(tid: str, mid: str):
@@ -153,6 +173,39 @@ async def set_background(tid: str, req: BackgroundReq, host_token: Optional[str]
         raise HTTPException(404, "Tournament not found.")
     if "error" in res:
         raise HTTPException(400, res["error"])
+    await _broadcast_state(tid)
+    return res
+
+
+@router.post("/tournaments/{tid}/background/upload")
+async def upload_background(tid: str, host_token: Optional[str] = None, file: UploadFile = File(...)):
+    """Upload an image file to use as the tournament background. Stored under
+    static/uploads and served from there; background_url is set to its path."""
+    _require_host(tid, host_token)
+    ext = _UPLOAD_EXT.get((file.content_type or "").lower())
+    if not ext:
+        raise HTTPException(400, "Upload a JPG, PNG, WebP or GIF image.")
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(400, "Image is too large (max 5 MB).")
+    if not data:
+        raise HTTPException(400, "The file is empty.")
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    fname = f"{tid}-{secrets.token_hex(4)}{ext}"
+    (UPLOAD_DIR / fname).write_bytes(data)
+    res = svc.set_background_path(tid, f"/static/uploads/{fname}")
+    if res is None:
+        raise HTTPException(404, "Tournament not found.")
+    await _broadcast_state(tid)
+    return res
+
+
+@router.post("/tournaments/{tid}/auto_rounds")
+async def set_auto_rounds(tid: str, req: AutoRoundsReq, host_token: Optional[str] = None):
+    _require_host(tid, host_token)
+    res = svc.set_auto_rounds(tid, req.enabled)
+    if res is None:
+        raise HTTPException(404, "Tournament not found.")
     await _broadcast_state(tid)
     return res
 
@@ -264,6 +317,7 @@ async def confirm(tid: str, mid: str, req: ConfirmResultReq):
         raise HTTPException(400, res["error"])
     if res["status"] == "confirmed":
         await _broadcast_state(tid, {"kind": "confirmed", "message": "Result confirmed.", "match_id": mid})
+        await _maybe_auto_advance(tid)
     else:
         await _broadcast_state(tid, {"kind": "disputed", "message": "Result disputed.", "match_id": mid})
     return res
@@ -278,6 +332,7 @@ async def resolve(tid: str, mid: str, req: HostResolveReq, host_token: Optional[
     if "error" in res:
         raise HTTPException(400, res["error"])
     await _broadcast_state(tid, {"kind": "confirmed", "message": "Host resolved the match.", "match_id": mid})
+    await _maybe_auto_advance(tid)
     return res
 
 

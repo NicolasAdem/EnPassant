@@ -65,18 +65,15 @@
             On-site event · tables enabled
           </span>
         </div>
+        <a href="/join/{{ tid }}" class="btn btn-ghost" style="margin-top: 1rem; width: 100%;">＋ Join as a player</a>
       </div>
 
       <!-- Round controls -->
       <div class="card card-elevated">
         <div class="eyebrow" style="margin-bottom: 1rem;">Round control</div>
-        <div class="row between" style="align-items: center; gap: 0.8rem;">
-          <div>
-            <div class="muted" style="font-size: 0.78rem;">Pairing mode</div>
-            <div id="pairing-mode-label" style="font-family: var(--font-display); font-size: 1.25rem; color: var(--lime); margin-top: 0.15rem;">—</div>
-          </div>
-          <span class="eyebrow" title="Set when the tournament was created. It stays the same every round."
-                style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.65rem; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-mute); font-size: 0.66rem;">🔒 Locked</span>
+        <div>
+          <div class="muted" style="font-size: 0.78rem;">Pairing mode</div>
+          <div id="pairing-mode-label" style="font-family: var(--font-display); font-size: 1.25rem; color: var(--lime); margin-top: 0.15rem;">—</div>
         </div>
         <button id="btn-start-round" class="btn btn-primary btn-lg" style="margin-top: 1.2rem; width: 100%;">
           Start round →
@@ -158,25 +155,30 @@
   <section class="drawer-section">
     <div class="eyebrow" style="margin-bottom: 0.8rem;">Appearance</div>
     <div class="theme-picker" id="theme-picker" role="radiogroup" aria-label="Color theme">
+      <label data-theme-name="chessboard">
+        <span class="swatch chessboard"></span>
+        <span class="swatch-label">Chess</span>
+        <input type="radio" name="theme" value="chessboard">
+      </label>
       <label data-theme-name="forest">
         <span class="swatch forest"></span>
         <span class="swatch-label">Forest</span>
         <input type="radio" name="theme" value="forest">
       </label>
-      <label data-theme-name="royal">
-        <span class="swatch royal"></span>
-        <span class="swatch-label">Royal</span>
-        <input type="radio" name="theme" value="royal">
-      </label>
-      <label data-theme-name="crimson">
-        <span class="swatch crimson"></span>
-        <span class="swatch-label">Crimson</span>
-        <input type="radio" name="theme" value="crimson">
-      </label>
       <label data-theme-name="ivory">
         <span class="swatch ivory"></span>
         <span class="swatch-label">Ivory</span>
         <input type="radio" name="theme" value="ivory">
+      </label>
+      <label data-theme-name="mono-light">
+        <span class="swatch mono-light"></span>
+        <span class="swatch-label">Light</span>
+        <input type="radio" name="theme" value="mono-light">
+      </label>
+      <label data-theme-name="mono-dark">
+        <span class="swatch mono-dark"></span>
+        <span class="swatch-label">Dark</span>
+        <input type="radio" name="theme" value="mono-dark">
       </label>
     </div>
     <div class="muted" style="font-size: 0.78rem; margin-top: 0.7rem;">
@@ -185,12 +187,27 @@
 
     <label for="bg-input" style="margin-top: 1.3rem;">Background image</label>
     <div class="row" style="gap: 0.5rem;">
-      <input type="text" id="bg-input" placeholder="https://…" style="flex: 1;">
+      <input type="text" id="bg-input" placeholder="Paste an image URL…" style="flex: 1;">
       <button class="btn" id="btn-bg-save">Save</button>
     </div>
-    <button class="btn btn-ghost" id="btn-bg-clear" style="margin-top: 0.5rem; padding: 0.3rem 0.7rem; font-size: 0.82rem;">Clear background</button>
+    <input type="file" id="bg-file" accept="image/png,image/jpeg,image/webp,image/gif" style="display: none;">
+    <div class="row" style="gap: 0.5rem; margin-top: 0.5rem;">
+      <button class="btn btn-ghost" id="btn-bg-upload" style="flex: 1; padding: 0.45rem;">⬆ Upload image</button>
+      <button class="btn btn-ghost" id="btn-bg-clear" style="padding: 0.45rem 0.8rem; font-size: 0.82rem;">Clear</button>
+    </div>
     <div class="muted" style="font-size: 0.78rem; margin-top: 0.5rem; line-height: 1.4;">
-      Paste an image link to give your group's dashboard & projector a personal backdrop.
+      Paste a link or upload an image (max 5 MB) for your group's dashboard & projector backdrop.
+    </div>
+  </section>
+
+  <section class="drawer-section">
+    <div class="eyebrow" style="margin-bottom: 0.8rem;">Rounds</div>
+    <label class="toggle-row" for="auto-rounds-toggle">
+      <span>Automatic rounds</span>
+      <span class="switch"><input type="checkbox" id="auto-rounds-toggle"><span class="switch-track"></span></span>
+    </label>
+    <div class="muted" style="font-size: 0.78rem; margin-top: 0.5rem; line-height: 1.4;">
+      When on, the next round starts automatically as soon as every game in the current round is confirmed.
     </div>
   </section>
 
@@ -240,7 +257,15 @@ function render(state) {
   // Personalization: background image (don't clobber the field while editing).
   applyBackground(t.background_url);
   const bgInput = document.getElementById('bg-input');
-  if (bgInput && document.activeElement !== bgInput) bgInput.value = t.background_url || '';
+  if (bgInput && document.activeElement !== bgInput && /^https?:/.test(t.background_url || '')) {
+    bgInput.value = t.background_url || '';
+  } else if (bgInput && !t.background_url && document.activeElement !== bgInput) {
+    bgInput.value = '';
+  }
+
+  // Auto-rounds toggle reflects server state.
+  const autoToggle = document.getElementById('auto-rounds-toggle');
+  if (autoToggle && document.activeElement !== autoToggle) autoToggle.checked = !!t.auto_rounds;
 
   // Header name can change via the rename control / another host tab.
   document.getElementById('t-name').textContent = t.name;
@@ -462,7 +487,8 @@ async function endTournament() {
 function applyBackground(url) {
   const el = document.getElementById('tourney-bg');
   if (!el) return;
-  const safe = (url && /^https?:\/\/[^\s"'()<>\\]+$/.test(url)) ? url : null;
+  // Allow an http(s) URL or a same-origin path (uploaded files live at /static/…).
+  const safe = (url && /^(https?:\/\/|\/)[^\s"'()<>\\]+$/.test(url)) ? url : null;
   el.style.backgroundImage = safe ? `url("${safe}")` : '';
 }
 
@@ -470,6 +496,36 @@ async function saveBackground(url) {
   try {
     await EP.api('POST', `/api/tournaments/${TID}/background?host_token=${encodeURIComponent(TOKEN)}`, { url });
     EP.toast(url ? 'Background updated.' : 'Background cleared.');
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  }
+}
+
+async function uploadBackground(fileInput) {
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    // Multipart upload — not JSON, so we use fetch directly rather than EP.api.
+    const res = await fetch(`/api/tournaments/${TID}/background/upload?host_token=${encodeURIComponent(TOKEN)}`,
+      { method: 'POST', body: fd });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.detail || 'Upload failed.');
+    }
+    EP.toast('Background uploaded.');
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  } finally {
+    fileInput.value = '';
+  }
+}
+
+async function setAutoRounds(enabled) {
+  try {
+    await EP.api('POST', `/api/tournaments/${TID}/auto_rounds?host_token=${encodeURIComponent(TOKEN)}`, { enabled });
+    EP.toast(enabled ? 'Automatic rounds on.' : 'Automatic rounds off.');
   } catch (err) {
     EP.toast(err.message, 'error');
   }
@@ -589,6 +645,9 @@ document.getElementById('btn-rename').addEventListener('click', renameTournament
 document.getElementById('rename-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') renameTournament(); });
 document.getElementById('btn-bg-save').addEventListener('click', () => saveBackground(document.getElementById('bg-input').value.trim()));
 document.getElementById('btn-bg-clear').addEventListener('click', () => { document.getElementById('bg-input').value = ''; saveBackground(''); });
+document.getElementById('btn-bg-upload').addEventListener('click', () => document.getElementById('bg-file').click());
+document.getElementById('bg-file').addEventListener('change', (e) => uploadBackground(e.target));
+document.getElementById('auto-rounds-toggle').addEventListener('change', (e) => setAutoRounds(e.target.checked));
 
 // Copy-link buttons
 drawer.addEventListener('click', async (ev) => {

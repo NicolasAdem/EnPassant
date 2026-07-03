@@ -431,6 +431,20 @@
   color: var(--ink-mute);
 }
 
+/* --- Mobile: the leaderboard link opens this on phones, so make it usable
+   there — stack the two panels and let the page scroll instead of clipping. */
+@media (max-width: 720px) {
+  .projector-body { overflow: auto; height: auto; }
+  .projector { height: auto; min-height: 100vh; padding: 1.4vh 4vw; gap: 1.6vh; }
+  .proj-header { flex-direction: column; align-items: flex-start; gap: 1vh; }
+  .proj-meta { gap: 1.4rem; flex-wrap: wrap; }
+  .proj-body { grid-template-columns: 1fr; overflow: visible; gap: 2.5vh; }
+  .proj-leaderboard, .proj-matches { overflow: visible; }
+  .rank-name { font-size: 1.1rem; }
+  .proj-team-summary .team-pill .tp-name,
+  .proj-team-summary .team-pill .tp-score { font-size: 1.05rem; }
+}
+
 /* Result flash on a row */
 .result-flash {
   position: absolute;

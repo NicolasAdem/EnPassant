@@ -139,7 +139,8 @@ function render(state, hint) {
 function applyBackground(url) {
   const el = document.getElementById('tourney-bg');
   if (!el) return;
-  const safe = (url && /^https?:\/\/[^\s"'()<>\\]+$/.test(url)) ? url : null;
+  // Allow an http(s) URL or a same-origin path (uploaded files live at /static/…).
+  const safe = (url && /^(https?:\/\/|\/)[^\s"'()<>\\]+$/.test(url)) ? url : null;
   el.style.backgroundImage = safe ? `url("${safe}")` : '';
 }
 

@@ -17,47 +17,50 @@
    ============================================================ */
 
 :root {
-  /* Palette — moss + lichen + pine + lime spark (Forest, default) */
-  --bg-0: #07100c;        /* deepest */
-  --bg-1: #0d1a14;
-  --bg-2: #122620;
-  --bg-3: #1a352c;
-  --line: #224135;
-  --line-2: #2e5447;
+  /* Palette — Chessboard: dark board green + classic chess-green accent.
+     This is the default theme (no data-theme attribute). Forest, the original
+     neon-lime palette, is now an explicit [data-theme="forest"] override. */
+  --bg-0: #16201a;        /* deepest — dark board green */
+  --bg-1: #1b2820;
+  --bg-2: #223026;
+  --bg-3: #2b3d30;
+  --line: #35493b;
+  --line-2: #486452;
 
-  --ink: #e8f2ec;
-  --ink-mute: #9fb4a7;
-  --ink-faint: #6a7e72;
+  --ink: #eaf1ea;
+  --ink-mute: #a6b8aa;
+  --ink-faint: #71857a;
 
-  --moss: #4a8f6b;
-  --pine: #2d6649;
-  --lime: #b8ff5c;        /* signal / accent */
-  --lime-dim: #7fb336;
-  --gold: #d4b572;
+  --moss: #5a9e6f;
+  --pine: #3a6b4a;
+  --lime: #81b64c;        /* signal / accent — chessboard green */
+  --lime-dim: #5f8c38;
+  --gold: #d9b25f;
   --rose: #d96a6a;        /* dispute / error */
 
   /* RGB triples for the colors that appear inside rgba(...) calls.
      Kept in sync with the hex values above. Themes override these
      alongside the hex variants. */
-  --accent-rgb: 184, 255, 92;   /* matches --lime */
-  --moss-rgb: 74, 143, 107;     /* matches --moss */
-  --pine-rgb: 45, 102, 73;      /* matches --pine */
+  --accent-rgb: 129, 182, 76;   /* matches --lime */
+  --moss-rgb: 90, 158, 111;     /* matches --moss */
+  --pine-rgb: 58, 107, 74;      /* matches --pine */
   --rose-rgb: 217, 106, 106;    /* matches --rose */
-  --gold-rgb: 212, 181, 114;    /* matches --gold */
-  --bg-0-rgb: 7, 16, 12;        /* matches --bg-0; used in round-hero overlay */
-  --bg-1-rgb: 13, 26, 20;       /* matches --bg-1; used by join-form input */
+  --gold-rgb: 217, 178, 95;     /* matches --gold */
+  --bg-0-rgb: 22, 32, 26;       /* matches --bg-0; used in round-hero overlay */
+  --bg-1-rgb: 27, 40, 32;       /* matches --bg-1; used by join-form input */
 
   /* The body grain. Light themes flip this from white-on-dark to
      dark-on-light so the grid texture stays visible either way. */
   --grain-rgb: 255, 255, 255;
   --grain-alpha: 0.012;
 
-  /* The btn-primary's text color sat at var(--bg-0) inline before
-     theming. On light themes that produced white-on-lime, which is
-     unreadable. Pulled out so each theme can pick the right contrast. */
-  --btn-primary-ink: var(--bg-0);
+  /* Text color for the accent-colored primary button. Chess green is medium,
+     so dark text reads best; light themes override this. */
+  --btn-primary-ink: #0f160f;
+  --lime-hover: #93c95e;
+  --bg-deeper: #0f160f;
 
-  --grad-board: linear-gradient(135deg, #0e1a14 0%, #122620 50%, #0d1a14 100%);
+  --grad-board: linear-gradient(135deg, #1b2820 0%, #223026 50%, #1b2820 100%);
 
   --shadow-1: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 24px rgba(0,0,0,0.4);
   --shadow-glow: 0 0 0 1px rgba(var(--accent-rgb),0.25), 0 8px 32px rgba(var(--accent-rgb),0.12);
@@ -1005,6 +1008,80 @@ label {
 }
 
 /* ============================================================
+   Session 6: toggles, lobby actions, code input, mobile.
+   ============================================================ */
+
+/* The join-code placeholder shouldn't inherit the wide letter-spacing used
+   for typed codes, or "Enter a code" gets clipped on the field. */
+#join-code::placeholder { letter-spacing: normal; text-transform: none; }
+
+/* Lobby card action links (cards are divs now, so these are real links) */
+.lobby-actions {
+  display: flex;
+  gap: 1.2rem;
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+}
+.lobby-link {
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+  color: var(--ink-mute);
+}
+.lobby-link:hover { color: var(--lime); }
+.lobby-link.accent { color: var(--lime); }
+
+/* Switch toggle (settings + create form) */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+  margin: 0;
+  font-family: var(--font-body);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch-track {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-3);
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  transition: background 0.2s var(--ease-out), border-color 0.2s var(--ease-out);
+}
+.switch-track::before {
+  content: '';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--ink-mute);
+  transition: transform 0.2s var(--ease-out), background 0.2s var(--ease-out);
+}
+.switch input:checked + .switch-track { background: var(--lime); border-color: var(--lime); }
+.switch input:checked + .switch-track::before { transform: translateX(20px); background: var(--btn-primary-ink); }
+.switch input:focus-visible + .switch-track { box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.3); }
+
+/* --- Mobile responsive --- */
+@media (max-width: 720px) {
+  .page { padding: 1rem 0.9rem; }
+  h1 { font-size: clamp(2rem, 9vw, 3rem); }
+  /* Match board: drop the fixed board-number column padding a touch so long
+     names have more room before truncating. */
+  .match-board { gap: 0.4rem 0.5rem; grid-template-columns: 1.4rem minmax(0, 1fr) auto minmax(0, 1fr) auto; }
+  /* Lobby grid to a single column on small phones. */
+  .lobby-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
    Task #9: themes. Each theme overrides only the variables;
    every rule above reads from them, so a theme switch is a
    single attribute change on <html>. The picker UI lives at
@@ -1022,8 +1099,118 @@ label {
    ============================================================ */
 
 :root[data-theme="forest"] {
-  /* Explicit duplicate of :root, so the picker has a stable
-     selector to highlight when "Forest" is the active theme. */
+  /* The original neon-lime forest palette (was :root before Chessboard
+     became the default). */
+  --bg-0: #07100c;
+  --bg-1: #0d1a14;
+  --bg-2: #122620;
+  --bg-3: #1a352c;
+  --line: #224135;
+  --line-2: #2e5447;
+
+  --ink: #e8f2ec;
+  --ink-mute: #9fb4a7;
+  --ink-faint: #6a7e72;
+
+  --moss: #4a8f6b;
+  --pine: #2d6649;
+  --lime: #b8ff5c;
+  --lime-dim: #7fb336;
+  --gold: #d4b572;
+  --rose: #d96a6a;
+
+  --accent-rgb: 184, 255, 92;
+  --moss-rgb: 74, 143, 107;
+  --pine-rgb: 45, 102, 73;
+  --rose-rgb: 217, 106, 106;
+  --gold-rgb: 212, 181, 114;
+  --bg-0-rgb: 7, 16, 12;
+  --bg-1-rgb: 13, 26, 20;
+
+  --grain-rgb: 255, 255, 255;
+  --grain-alpha: 0.012;
+
+  --btn-primary-ink: #07100c;
+  --lime-hover: #cdff7e;
+  --bg-deeper: #050a07;
+
+  --grad-board: linear-gradient(135deg, #0e1a14 0%, #122620 50%, #0d1a14 100%);
+}
+
+/* Minimalist monochrome — like a plain light / dark mode. Accent is pure
+   black (light) or white (dark); a red is kept only for disputes/errors. */
+:root[data-theme="mono-light"] {
+  --bg-0: #ffffff;
+  --bg-1: #fafafa;
+  --bg-2: #f4f4f4;
+  --bg-3: #ececec;
+  --line: #e2e2e2;
+  --line-2: #cfcfcf;
+
+  --ink: #141414;
+  --ink-mute: #555555;
+  --ink-faint: #8a8a8a;
+
+  --moss: #444444;
+  --pine: #2a2a2a;
+  --lime: #1a1a1a;
+  --lime-dim: #555555;
+  --gold: #6b6b6b;
+  --rose: #c0392b;
+
+  --accent-rgb: 26, 26, 26;
+  --moss-rgb: 68, 68, 68;
+  --pine-rgb: 42, 42, 42;
+  --rose-rgb: 192, 57, 43;
+  --gold-rgb: 107, 107, 107;
+  --bg-0-rgb: 255, 255, 255;
+  --bg-1-rgb: 250, 250, 250;
+
+  --grain-rgb: 0, 0, 0;
+  --grain-alpha: 0.02;
+
+  --btn-primary-ink: #ffffff;
+  --lime-hover: #333333;
+  --bg-deeper: #f0f0f0;
+
+  --grad-board: linear-gradient(135deg, #fafafa 0%, #f0f0f0 50%, #fafafa 100%);
+}
+
+:root[data-theme="mono-dark"] {
+  --bg-0: #0a0a0a;
+  --bg-1: #141414;
+  --bg-2: #1c1c1c;
+  --bg-3: #262626;
+  --line: #333333;
+  --line-2: #4d4d4d;
+
+  --ink: #f5f5f5;
+  --ink-mute: #a8a8a8;
+  --ink-faint: #6e6e6e;
+
+  --moss: #bdbdbd;
+  --pine: #8a8a8a;
+  --lime: #ffffff;
+  --lime-dim: #bdbdbd;
+  --gold: #cccccc;
+  --rose: #e06666;
+
+  --accent-rgb: 255, 255, 255;
+  --moss-rgb: 189, 189, 189;
+  --pine-rgb: 138, 138, 138;
+  --rose-rgb: 224, 102, 102;
+  --gold-rgb: 204, 204, 204;
+  --bg-0-rgb: 10, 10, 10;
+  --bg-1-rgb: 20, 20, 20;
+
+  --grain-rgb: 255, 255, 255;
+  --grain-alpha: 0.015;
+
+  --btn-primary-ink: #0a0a0a;
+  --lime-hover: #e0e0e0;
+  --bg-deeper: #050505;
+
+  --grad-board: linear-gradient(135deg, #141414 0%, #1c1c1c 50%, #141414 100%);
 }
 
 :root[data-theme="royal"] {
@@ -1211,10 +1398,13 @@ label {
    so the host sees what they're picking without applying it first.
    Hardcoded colors here are intentional — they're a preview, not
    the live theme. */
-.theme-picker .swatch.forest  { background: linear-gradient(135deg, #0d1a14 0% 60%, #b8ff5c 60% 100%); }
-.theme-picker .swatch.royal   { background: linear-gradient(135deg, #0c1426 0% 60%, #f0b955 60% 100%); }
-.theme-picker .swatch.crimson { background: linear-gradient(135deg, #150c0c 0% 60%, #ef4d4d 60% 100%); }
-.theme-picker .swatch.ivory   { background: linear-gradient(135deg, #ebe5d4 0% 60%, #2d6649 60% 100%); }
+.theme-picker .swatch.chessboard { background: linear-gradient(135deg, #1b2820 0% 60%, #81b64c 60% 100%); }
+.theme-picker .swatch.forest     { background: linear-gradient(135deg, #0d1a14 0% 60%, #b8ff5c 60% 100%); }
+.theme-picker .swatch.ivory      { background: linear-gradient(135deg, #ebe5d4 0% 60%, #2d6649 60% 100%); }
+.theme-picker .swatch.mono-light { background: linear-gradient(135deg, #ffffff 0% 60%, #1a1a1a 60% 100%); }
+.theme-picker .swatch.mono-dark  { background: linear-gradient(135deg, #141414 0% 60%, #ffffff 60% 100%); }
+.theme-picker .swatch.royal      { background: linear-gradient(135deg, #0c1426 0% 60%, #f0b955 60% 100%); }
+.theme-picker .swatch.crimson    { background: linear-gradient(135deg, #150c0c 0% 60%, #ef4d4d 60% 100%); }
 .theme-picker .swatch-label {
   font-size: 0.72rem;
   font-family: var(--font-mono);

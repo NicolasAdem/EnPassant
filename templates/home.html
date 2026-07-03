@@ -23,7 +23,7 @@
       <form id="join-code-form" class="row" style="gap: 0.6rem;">
         <input type="text" id="join-code" maxlength="6" placeholder="Enter a code"
                autocapitalize="characters" autocomplete="off" spellcheck="false"
-               style="width: 9rem; letter-spacing: 0.18em; text-transform: uppercase; font-family: var(--font-mono);">
+               style="width: 13rem; letter-spacing: 0.12em; text-transform: uppercase; font-family: var(--font-mono);">
         <button type="submit" class="btn btn-lg">Join →</button>
       </form>
     </div>
@@ -35,14 +35,18 @@
     {% if playing %}
       <div class="lobby-grid">
         {% for t in playing %}
-        <a class="lobby-card lobby-state-{{ t.state }}" href="/player/{{ t.id }}/{{ t.player_id }}">
+        <div class="lobby-card lobby-state-{{ t.state }}">
           <div class="row between" style="align-items: flex-start; gap: 0.6rem;">
             <h3 style="font-size: 1.15rem;">{{ t.name }}</h3>
             <span class="lobby-dot" aria-hidden="true"></span>
           </div>
           <div class="mono faint" style="font-size: 0.78rem; letter-spacing: 0.2em; margin-top: 0.3rem;">{{ t.id }}</div>
           <div class="lobby-summary" style="margin-top: 0.9rem;">{{ t.summary }}</div>
-        </a>
+          <div class="lobby-actions">
+            <a href="/player/{{ t.id }}/{{ t.player_id }}" class="lobby-link accent">Open →</a>
+            <a href="/leaderboard/{{ t.id }}" class="lobby-link" target="_blank">📊 Leaderboard</a>
+          </div>
+        </div>
         {% endfor %}
       </div>
     {% else %}
@@ -56,7 +60,7 @@
     {% if hosting %}
       <div class="lobby-grid">
         {% for t in hosting %}
-        <a class="lobby-card" href="/host/{{ t.id }}?token={{ t.host_token | urlencode }}">
+        <div class="lobby-card">
           <div class="row between" style="align-items: flex-start; gap: 0.6rem;">
             <h3 style="font-size: 1.15rem;">{{ t.name }}</h3>
             <span class="badge badge-{{ 'confirmed' if t.status == 'active' else ('bye' if t.status == 'finished' else 'pending') }}">
@@ -70,7 +74,11 @@
             {% if t.pending_matches %}<span style="color: var(--gold);">{{ t.pending_matches }} pending</span>{% endif %}
             {% if t.disputes %}<span style="color: var(--rose);">{{ t.disputes }} dispute{{ '' if t.disputes == 1 else 's' }}</span>{% endif %}
           </div>
-        </a>
+          <div class="lobby-actions">
+            <a href="/host/{{ t.id }}?token={{ t.host_token | urlencode }}" class="lobby-link accent">Manage →</a>
+            <a href="/leaderboard/{{ t.id }}" class="lobby-link" target="_blank">📊 Leaderboard</a>
+          </div>
+        </div>
         {% endfor %}
       </div>
     {% else %}

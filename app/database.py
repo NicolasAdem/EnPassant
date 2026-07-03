@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
     current_round INTEGER NOT NULL DEFAULT 0,
     location_mode TEXT NOT NULL DEFAULT 'offsite', -- offsite | onsite (controls table-number UI)
     background_url TEXT,   -- optional image shown softly behind dashboard & projector
+    auto_rounds INTEGER NOT NULL DEFAULT 0, -- 1 = auto-start next round when all matches confirmed
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (host_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
@@ -174,6 +175,9 @@ def _migrate(conn):
     add_column("players", "team_id", "TEXT")
     # Personalization (session 5): optional dashboard/projector background image.
     add_column("tournaments", "background_url", "TEXT")
+    # Auto-advance (session 6): start the next round automatically once every
+    # match in the current round is confirmed.
+    add_column("tournaments", "auto_rounds", "INTEGER NOT NULL DEFAULT 0")
     # Task #7: on-site / off-site location mode + per-match table numbers.
     # Existing tournaments default to 'offsite', which means table-number UI
     # stays hidden — preserves the previous behavior exactly.

@@ -230,5 +230,22 @@ def test_background_requires_host(client):
     assert r.status_code == 403
 
 
+def test_background_upload_rejects_non_image(client):
+    _signup(client)
+    body = client.post("/api/tournaments", json={"name": "Bg"}).json()
+    tid, ht = body["id"], body["host_token"]
+    r = client.post(f"/api/tournaments/{tid}/background/upload", params={"host_token": ht},
+                    files={"file": ("notes.txt", b"hello", "text/plain")})
+    assert r.status_code == 400
+
+
+def test_background_upload_requires_host(client):
+    _signup(client)
+    tid = client.post("/api/tournaments", json={"name": "Bg"}).json()["id"]
+    r = client.post(f"/api/tournaments/{tid}/background/upload",
+                    files={"file": ("x.png", b"\x89PNG\r\n", "image/png")})
+    assert r.status_code == 403
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

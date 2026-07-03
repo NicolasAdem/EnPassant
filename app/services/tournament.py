@@ -146,6 +146,47 @@ def set_background(tid: str, url: Optional[str]) -> Optional[dict]:
     return {"background_url": val}
 
 
+def set_background_path(tid: str, path: Optional[str]) -> Optional[dict]:
+    """Set background_url to a server-controlled path (e.g. an uploaded file).
+    Skips the http(s) validation in set_background because the path is ours."""
+    with db() as conn:
+        cur = conn.execute("UPDATE tournaments SET background_url = ? WHERE id = ?", (path, tid))
+        if cur.rowcount == 0:
+            return None
+    return {"background_url": path}
+
+
+def set_auto_rounds(tid: str, enabled: bool) -> Optional[dict]:
+    """Toggle automatic round advancement."""
+    with db() as conn:
+        cur = conn.execute(
+            "UPDATE tournaments SET auto_rounds = ? WHERE id = ?", (1 if enabled else 0, tid)
+        )
+        if cur.rowcount == 0:
+            return None
+    return {"auto_rounds": 1 if enabled else 0}
+
+
+def auto_advance_if_ready(tid: str) -> Optional[dict]:
+    """If auto-rounds is on and every match in the current round is settled,
+    start the next round. Returns the new round's result dict (so the caller can
+    broadcast a round_start), or None if nothing advanced.
+
+    Safe to call after any result is finalized — it no-ops unless the round is
+    genuinely complete, and start_next_round itself guards the same condition.
+    """
+    t = get_tournament(tid)
+    if not t or not t.get("auto_rounds") or t["status"] != "active":
+        return None
+    current = list_current_round_matches(tid)
+    if not current or any(m["status"] not in ("confirmed", "bye") for m in current):
+        return None
+    res = start_next_round(tid)
+    if res and "error" not in res:
+        return res
+    return None
+
+
 def rename_tournament(tid: str, name: str) -> Optional[dict]:
     """Update the tournament's display name. Returns the new name or None if the
     tournament doesn't exist / the name is empty after trimming."""

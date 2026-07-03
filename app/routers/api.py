@@ -3,16 +3,17 @@ HTTP API endpoints. Frontend talks to these via fetch().
 WebSocket lives in main.py.
 """
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import io
 import qrcode
 
 from ..database import db
 from ..services import tournament as svc
 from ..websocket_manager import manager
+from .auth import require_user_api
 
 
 router = APIRouter(prefix="/api")
@@ -24,15 +25,25 @@ class CreateTournamentReq(BaseModel):
     name: str
     pairing_mode: str = "swiss"  # swiss | round_robin | random | manual
     location_mode: str = "offsite"  # offsite | onsite
+    teams: Optional[List[str]] = None  # 2..MAX_TEAMS names → team mode
 
 
 class AddPlayerReq(BaseModel):
     name: str
     elo: int = 1200
+    team_id: Optional[str] = None
 
 
-class StartRoundReq(BaseModel):
-    mode_override: Optional[str] = None  # let host choose mode for THIS round
+class SetTeamReq(BaseModel):
+    team_id: Optional[str] = None
+
+
+class RenameReq(BaseModel):
+    name: str
+
+
+class BackgroundReq(BaseModel):
+    url: Optional[str] = None
 
 
 class ManualMatchReq(BaseModel):
@@ -104,15 +115,46 @@ def _require_match_in_tournament(tid: str, mid: str):
 # ---------- Endpoints ----------
 
 @router.post("/tournaments")
-async def create_tournament(req: CreateTournamentReq):
+async def create_tournament(req: CreateTournamentReq, user: dict = Depends(require_user_api)):
     if not req.name.strip():
         raise HTTPException(400, "Tournament name required.")
     if req.pairing_mode not in ("swiss", "round_robin", "random", "manual"):
         raise HTTPException(400, "Invalid pairing mode.")
     if req.location_mode not in ("offsite", "onsite"):
         raise HTTPException(400, "Invalid location mode.")
-    t = svc.create_tournament(req.name.strip()[:60], req.pairing_mode, req.location_mode)
+    if req.teams is not None:
+        named = [n for n in req.teams if n and n.strip()]
+        if not (2 <= len(named) <= svc.MAX_TEAMS):
+            raise HTTPException(400, f"Team mode needs 2–{svc.MAX_TEAMS} teams.")
+    t = svc.create_tournament(req.name.strip()[:60], req.pairing_mode,
+                              req.location_mode, host_user_id=user["id"])
+    if req.teams is not None:
+        svc.create_teams(t["id"], req.teams)
     return t
+
+
+@router.post("/tournaments/{tid}/name")
+async def rename_tournament(tid: str, req: RenameReq, host_token: Optional[str] = None):
+    _require_host(tid, host_token)
+    if not req.name.strip():
+        raise HTTPException(400, "Tournament name required.")
+    res = svc.rename_tournament(tid, req.name)
+    if res is None:
+        raise HTTPException(404, "Tournament not found.")
+    await _broadcast_state(tid)
+    return res
+
+
+@router.post("/tournaments/{tid}/background")
+async def set_background(tid: str, req: BackgroundReq, host_token: Optional[str] = None):
+    _require_host(tid, host_token)
+    res = svc.set_background(tid, req.url)
+    if res is None:
+        raise HTTPException(404, "Tournament not found.")
+    if "error" in res:
+        raise HTTPException(400, res["error"])
+    await _broadcast_state(tid)
+    return res
 
 
 @router.get("/tournaments/{tid}")
@@ -135,13 +177,19 @@ async def get_state(tid: str):
 
 
 @router.post("/tournaments/{tid}/players")
-async def add_player(tid: str, req: AddPlayerReq):
+async def add_player(tid: str, req: AddPlayerReq, user: dict = Depends(require_user_api)):
     if not req.name.strip():
         raise HTTPException(400, "Player name required.")
-    p = svc.add_player(tid, req.name, req.elo)
-    if not p:
+    # Was this account already in the tournament? add_player is idempotent for a
+    # known user, so a returned existing player shouldn't re-broadcast a join.
+    already = svc.get_player_for_user(tid, user["id"]) is not None
+    p = svc.add_player(tid, req.name, req.elo, user_id=user["id"], team_id=req.team_id)
+    if p is None:
         raise HTTPException(400, "Could not add player. Tournament may be finished or not found.")
-    await _broadcast_state(tid, {"kind": "join", "message": f"{p['name']} joined.", "player_id": p["id"]})
+    if "error" in p:
+        raise HTTPException(400, p["error"])
+    if not already:
+        await _broadcast_state(tid, {"kind": "join", "message": f"{p['name']} joined.", "player_id": p["id"]})
     return p
 
 
@@ -155,12 +203,24 @@ async def remove_player(tid: str, pid: str, host_token: Optional[str] = None):
     return {"ok": True}
 
 
-@router.post("/tournaments/{tid}/rounds")
-async def start_round(tid: str, req: StartRoundReq, host_token: Optional[str] = None):
+@router.post("/tournaments/{tid}/players/{pid}/team")
+async def set_player_team(tid: str, pid: str, req: SetTeamReq, host_token: Optional[str] = None):
     _require_host(tid, host_token)
-    if req.mode_override and req.mode_override not in ("swiss", "round_robin", "random", "manual"):
-        raise HTTPException(400, "Invalid mode.")
-    result = svc.start_next_round(tid, req.mode_override)
+    res = svc.set_player_team(tid, pid, req.team_id)
+    if res is None:
+        raise HTTPException(404, "Tournament not found.")
+    if "error" in res:
+        raise HTTPException(400, res["error"])
+    await _broadcast_state(tid)
+    return res
+
+
+@router.post("/tournaments/{tid}/rounds")
+async def start_round(tid: str, host_token: Optional[str] = None):
+    # No mode selection here by design: the pairing mode is locked at creation
+    # (see svc.start_next_round). This route just advances to the next round.
+    _require_host(tid, host_token)
+    result = svc.start_next_round(tid)
     if result is None:
         raise HTTPException(400, "Need at least 2 players to start a round.")
     if "error" in result:

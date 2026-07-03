@@ -12,12 +12,32 @@
     <div class="mono faint" style="margin-top: 0.6rem; letter-spacing: 0.25em;">{{ tid }}</div>
   </header>
 
+  {% if started %}
+  <div class="card card-elevated" style="text-align: center;">
+    <div class="badge badge-pending" style="margin-bottom: 1rem;">Already started</div>
+    <h3>This tournament is already underway</h3>
+    <p class="muted" style="margin-top: 0.6rem;">New players can only join before the first round begins.</p>
+    <a href="/" class="btn btn-ghost" style="margin-top: 1.4rem;">← Back to your lobbies</a>
+  </div>
+  {% else %}
   <div class="card card-elevated">
     <form id="join-form" class="col" style="gap: 1.5rem;">
       <div>
-        <label for="pname">Your name</label>
-        <input type="text" id="pname" required maxlength="40" placeholder="e.g. Alex" autocomplete="off" autofocus>
+        <label for="pname">Your name in this tournament</label>
+        <input type="text" id="pname" required maxlength="40" value="{{ user.display_name }}" autocomplete="off" autofocus>
       </div>
+      {% if teams %}
+      <div>
+        <label>Pick your team</label>
+        <div class="team-choice" id="team-choice">
+          {% for tm in teams %}
+          <button type="button" class="team-option" data-team="{{ tm.id }}" style="--tc: {{ tm.color }};">
+            <span class="team-swatch" style="background: {{ tm.color }};"></span>{{ tm.name }}
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
       <div>
         <label for="pelo">ELO rating <span style="text-transform: none; color: var(--ink-faint); letter-spacing: 0;">(optional, used for Swiss pairings)</span></label>
         <input type="number" id="pelo" min="0" max="3500" value="1200">
@@ -29,49 +49,46 @@
   <p class="muted" style="text-align: center; margin-top: 2rem; font-size: 0.9rem; line-height: 1.5;">
     After each game, you'll report your result here. Your opponent will confirm it.
   </p>
+  {% endif %}
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 const TID = "{{ tid }}";
+const HAS_TEAMS = {{ 'true' if teams else 'false' }};
 
-// If they already joined this tournament from this browser, send them straight in
-const stored = localStorage.getItem(`ep_player_${TID}`);
-if (stored) {
-  try {
-    const { id } = JSON.parse(stored);
-    if (id) {
-      // Verify the player is actually in this tournament's roster.
-      // (The /matches endpoint returns [] for bogus ids, so it can't
-      // tell us whether the player exists — check state.players instead.)
-      fetch(`/api/tournaments/${TID}/state`).then(r => {
-        if (!r.ok) return;
-        return r.json();
-      }).then(state => {
-        if (state && (state.players || []).some(p => p.id === id)) {
-          location.href = `/player/${TID}/${id}`;
-        } else {
-          // Stale entry — clear it so the form is usable.
-          localStorage.removeItem(`ep_player_${TID}`);
-        }
-      });
-    }
-  } catch (e) {}
+// Team picker (team-mode tournaments only)
+let selectedTeam = null;
+const teamChoice = document.getElementById('team-choice');
+if (teamChoice) {
+  teamChoice.addEventListener('click', (e) => {
+    const opt = e.target.closest('.team-option');
+    if (!opt) return;
+    selectedTeam = opt.dataset.team;
+    teamChoice.querySelectorAll('.team-option').forEach(o => o.classList.toggle('selected', o === opt));
+  });
 }
 
-document.getElementById('join-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const name = document.getElementById('pname').value.trim();
-  const elo = parseInt(document.getElementById('pelo').value, 10) || 1200;
-  if (!name) return;
-  try {
-    const p = await EP.api('POST', `/api/tournaments/${TID}/players`, { name, elo });
-    localStorage.setItem(`ep_player_${TID}`, JSON.stringify({ id: p.id, name: p.name }));
-    location.href = `/player/${TID}/${p.id}`;
-  } catch (err) {
-    EP.toast(err.message, 'error');
-  }
-});
+const form = document.getElementById('join-form');
+if (form) {
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('pname').value.trim();
+    const elo = parseInt(document.getElementById('pelo').value, 10) || 1200;
+    if (!name) return;
+    if (HAS_TEAMS && !selectedTeam) { EP.toast('Pick a team to join.', 'error'); return; }
+    try {
+      // The server ties this player to the logged-in account and is idempotent,
+      // so a double-submit just returns the existing player.
+      const body = { name, elo };
+      if (selectedTeam) body.team_id = selectedTeam;
+      const p = await EP.api('POST', `/api/tournaments/${TID}/players`, body);
+      location.href = `/player/${TID}/${p.id}`;
+    } catch (err) {
+      EP.toast(err.message, 'error');
+    }
+  });
+}
 </script>
 {% endblock %}

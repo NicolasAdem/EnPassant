@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Sign up' if mode == 'signup' else 'Log in' }} · EnPassant{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 460px; padding-top: 8vh;">
+
+  <header style="text-align: center; margin-bottom: 3vh;">
+    <a href="/login" class="brand" style="text-decoration: none; color: inherit; justify-content: center; font-size: 1.6rem;">
+      <span>en</span><span class="brand-dot"></span><span class="accent">passant</span>
+    </a>
+    <p class="muted" style="margin-top: 1rem; font-size: 1.02rem;">
+      Casual chess tournaments with your friends.
+    </p>
+  </header>
+
+  <div class="card card-elevated">
+    <div class="auth-tabs" role="tablist">
+      <a href="/login?next={{ next | urlencode }}" class="auth-tab {{ 'is-active' if mode != 'signup' }}" role="tab">Log in</a>
+      <a href="/signup?next={{ next | urlencode }}" class="auth-tab {{ 'is-active' if mode == 'signup' }}" role="tab">Sign up</a>
+    </div>
+
+    <form id="auth-form" class="col" style="gap: 1.2rem; margin-top: 1.6rem;">
+      {% if mode == 'signup' %}
+      <div>
+        <label for="display_name">Display name</label>
+        <input type="text" id="display_name" maxlength="40" required placeholder="e.g. Alex" autocomplete="nickname" autofocus>
+      </div>
+      {% endif %}
+      <div>
+        <label for="email">Email</label>
+        <input type="email" id="email" required placeholder="you@example.com" autocomplete="email" {{ 'autofocus' if mode != 'signup' }}>
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input type="password" id="password" required placeholder="{{ 'At least 8 characters' if mode == 'signup' else 'Your password' }}"
+               autocomplete="{{ 'new-password' if mode == 'signup' else 'current-password' }}" minlength="8">
+      </div>
+      <button class="btn btn-primary btn-lg" type="submit">
+        {{ 'Create account →' if mode == 'signup' else 'Log in →' }}
+      </button>
+    </form>
+  </div>
+
+  <p class="muted" style="text-align: center; margin-top: 1.6rem; font-size: 0.9rem;">
+    {% if mode == 'signup' %}
+      Already have an account? <a href="/login?next={{ next | urlencode }}" class="accent" style="text-decoration: none;">Log in</a>
+    {% else %}
+      New here? <a href="/signup?next={{ next | urlencode }}" class="accent" style="text-decoration: none;">Create an account</a>
+    {% endif %}
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MODE = "{{ mode }}";
+const NEXT = "{{ next | e }}";
+
+document.getElementById('auth-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  try {
+    if (MODE === 'signup') {
+      const display_name = document.getElementById('display_name').value.trim();
+      await EP.api('POST', '/api/auth/signup', { email, password, display_name });
+    } else {
+      await EP.api('POST', '/api/auth/login', { email, password });
+    }
+    location.href = NEXT || '/';
+  } catch (err) {
+    EP.toast(err.message, 'error');
+    btn.disabled = false;
+  }
+});
+</script>
+{% endblock %}

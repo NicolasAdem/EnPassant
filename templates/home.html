@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Your lobbies · EnPassant{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 900px;">
+
+  <header class="row between wrap" style="gap: 1rem; margin-bottom: 4vh;">
+    <a href="/" class="brand" style="text-decoration: none; color: inherit;">
+      <span>en</span><span class="brand-dot"></span><span class="accent">passant</span>
+    </a>
+    <div class="row" style="gap: 0.9rem;">
+      <span class="muted" style="font-size: 0.9rem;">Hi, <strong style="color: var(--ink);">{{ user.display_name }}</strong></span>
+      <button id="btn-logout" class="btn btn-ghost" style="padding: 0.4rem 0.9rem; font-size: 0.85rem;">Log out</button>
+    </div>
+  </header>
+
+  <section style="margin-bottom: 3.5vh;">
+    <h1 style="font-size: clamp(2rem, 5vw, 3.2rem);">Your <em class="accent">lobbies</em></h1>
+    <p class="muted" style="margin-top: 0.8rem; font-size: 1.05rem;">Start a new tournament or jump back into one you're playing.</p>
+
+    <div class="row wrap" style="gap: 1rem; margin-top: 2rem;">
+      <a href="/new" class="btn btn-primary btn-lg">+ Create tournament</a>
+      <form id="join-code-form" class="row" style="gap: 0.6rem;">
+        <input type="text" id="join-code" maxlength="6" placeholder="Enter a code"
+               autocapitalize="characters" autocomplete="off" spellcheck="false"
+               style="width: 9rem; letter-spacing: 0.18em; text-transform: uppercase; font-family: var(--font-mono);">
+        <button type="submit" class="btn btn-lg">Join →</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Playing -->
+  <section style="margin-bottom: 3.5vh;">
+    <div class="eyebrow" style="margin-bottom: 1rem;">You're playing in</div>
+    {% if playing %}
+      <div class="lobby-grid">
+        {% for t in playing %}
+        <a class="lobby-card lobby-state-{{ t.state }}" href="/player/{{ t.id }}/{{ t.player_id }}">
+          <div class="row between" style="align-items: flex-start; gap: 0.6rem;">
+            <h3 style="font-size: 1.15rem;">{{ t.name }}</h3>
+            <span class="lobby-dot" aria-hidden="true"></span>
+          </div>
+          <div class="mono faint" style="font-size: 0.78rem; letter-spacing: 0.2em; margin-top: 0.3rem;">{{ t.id }}</div>
+          <div class="lobby-summary" style="margin-top: 0.9rem;">{{ t.summary }}</div>
+        </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="card"><p class="muted">You haven't joined any tournaments yet. Got a code from a host? Enter it above.</p></div>
+    {% endif %}
+  </section>
+
+  <!-- Hosting -->
+  <section>
+    <div class="eyebrow" style="margin-bottom: 1rem;">You're hosting</div>
+    {% if hosting %}
+      <div class="lobby-grid">
+        {% for t in hosting %}
+        <a class="lobby-card" href="/host/{{ t.id }}?token={{ t.host_token | urlencode }}">
+          <div class="row between" style="align-items: flex-start; gap: 0.6rem;">
+            <h3 style="font-size: 1.15rem;">{{ t.name }}</h3>
+            <span class="badge badge-{{ 'confirmed' if t.status == 'active' else ('bye' if t.status == 'finished' else 'pending') }}">
+              {{ 'Live' if t.status == 'active' else ('Finished' if t.status == 'finished' else 'Lobby') }}
+            </span>
+          </div>
+          <div class="mono faint" style="font-size: 0.78rem; letter-spacing: 0.2em; margin-top: 0.3rem;">{{ t.id }}</div>
+          <div class="row wrap" style="gap: 1.1rem; margin-top: 0.9rem; font-size: 0.9rem;">
+            <span class="muted">{{ t.player_count }} player{{ '' if t.player_count == 1 else 's' }}</span>
+            {% if t.current_round %}<span class="muted">Round {{ t.current_round }}</span>{% endif %}
+            {% if t.pending_matches %}<span style="color: var(--gold);">{{ t.pending_matches }} pending</span>{% endif %}
+            {% if t.disputes %}<span style="color: var(--rose);">{{ t.disputes }} dispute{{ '' if t.disputes == 1 else 's' }}</span>{% endif %}
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="card"><p class="muted">You're not hosting anything yet. <a href="/new" class="accent" style="text-decoration:none;">Create your first tournament →</a></p></div>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('join-code-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const code = document.getElementById('join-code').value.trim().toUpperCase();
+  if (code.length < 4) { EP.toast('Codes are 6 characters.', 'error'); return; }
+  try {
+    await EP.api('GET', `/api/tournaments/${code}`);  // verify it exists
+    location.href = `/join/${code}`;
+  } catch (err) {
+    EP.toast('No tournament with that code.', 'error');
+  }
+});
+
+document.getElementById('btn-logout').addEventListener('click', async () => {
+  try { await EP.api('POST', '/api/auth/logout'); } catch (e) {}
+  location.href = '/login';
+});
+</script>
+{% endblock %}

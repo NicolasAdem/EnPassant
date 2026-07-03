@@ -2,6 +2,7 @@
 {% block title %}Host · {{ tournament_name }}{% endblock %}
 
 {% block content %}
+<div id="tourney-bg" class="tourney-bg"></div>
 <div class="page" style="max-width: 1180px;">
   <header class="row between wrap" style="margin-bottom: 3vh; gap: 1rem;">
     <div>
@@ -11,10 +12,11 @@
       <div class="eyebrow" style="margin-top: 0.4rem;">Host dashboard</div>
     </div>
     <div style="text-align: right;">
-      <h2 style="font-size: 1.6rem;">{{ tournament_name }}</h2>
-      <div class="row" style="gap: 0.8rem; margin-top: 0.5rem; justify-content: flex-end;">
+      <h2 id="t-name" style="font-size: 1.6rem;">{{ tournament_name }}</h2>
+      <div class="row" style="gap: 0.6rem; margin-top: 0.5rem; justify-content: flex-end;">
         <span class="mono accent" style="letter-spacing: 0.2em; font-size: 1.05rem;">{{ tid }}</span>
-        <a href="/projector/{{ tid }}" target="_blank" class="btn btn-ghost" style="padding: 0.35rem 0.8rem; font-size: 0.85rem;">📺 Projector view ↗</a>
+        <a href="/projector/{{ tid }}" target="_blank" class="btn btn-ghost" style="padding: 0.35rem 0.8rem; font-size: 0.85rem;">📺 Projector ↗</a>
+        <button id="btn-settings" class="btn btn-ghost" style="padding: 0.35rem 0.8rem; font-size: 0.85rem;">⚙ Settings</button>
       </div>
     </div>
   </header>
@@ -68,24 +70,16 @@
       <!-- Round controls -->
       <div class="card card-elevated">
         <div class="eyebrow" style="margin-bottom: 1rem;">Round control</div>
-        <div>
-          <label>Pairing mode for next round</label>
-          <div class="segmented segmented-wrap" role="radiogroup">
-            <input type="radio" name="rmode" id="r-swiss" value="swiss" checked>
-            <label for="r-swiss">Swiss</label>
-            <input type="radio" name="rmode" id="r-rr" value="round_robin">
-            <label for="r-rr">Round-robin</label>
-            <input type="radio" name="rmode" id="r-random" value="random">
-            <label for="r-random">Random</label>
-            <input type="radio" name="rmode" id="r-manual" value="manual">
-            <label for="r-manual">Manual</label>
+        <div class="row between" style="align-items: center; gap: 0.8rem;">
+          <div>
+            <div class="muted" style="font-size: 0.78rem;">Pairing mode</div>
+            <div id="pairing-mode-label" style="font-family: var(--font-display); font-size: 1.25rem; color: var(--lime); margin-top: 0.15rem;">—</div>
           </div>
+          <span class="eyebrow" title="Set when the tournament was created. It stays the same every round."
+                style="display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.65rem; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-mute); font-size: 0.66rem;">🔒 Locked</span>
         </div>
         <button id="btn-start-round" class="btn btn-primary btn-lg" style="margin-top: 1.2rem; width: 100%;">
           Start round →
-        </button>
-        <button id="btn-end-tournament" class="btn btn-danger" style="margin-top: 0.6rem; width: 100%;">
-          End tournament
         </button>
       </div>
 
@@ -104,42 +98,18 @@
         </div>
         <button id="btn-add-match" class="btn" style="margin-top: 1rem; width: 100%;">Add match</button>
       </div>
-
-      <!-- Task #9: theme picker. CSS-only switch, persisted in
-           localStorage. Affects host + projector + every other view
-           on this device. -->
-      <div class="card">
-        <div class="eyebrow" style="margin-bottom: 0.8rem;">Theme</div>
-        <div class="theme-picker" id="theme-picker" role="radiogroup" aria-label="Color theme">
-          <label data-theme-name="forest">
-            <span class="swatch forest"></span>
-            <span class="swatch-label">Forest</span>
-            <input type="radio" name="theme" value="forest">
-          </label>
-          <label data-theme-name="royal">
-            <span class="swatch royal"></span>
-            <span class="swatch-label">Royal</span>
-            <input type="radio" name="theme" value="royal">
-          </label>
-          <label data-theme-name="crimson">
-            <span class="swatch crimson"></span>
-            <span class="swatch-label">Crimson</span>
-            <input type="radio" name="theme" value="crimson">
-          </label>
-          <label data-theme-name="ivory">
-            <span class="swatch ivory"></span>
-            <span class="swatch-label">Ivory</span>
-            <input type="radio" name="theme" value="ivory">
-          </label>
-        </div>
-        <div class="muted" style="font-size: 0.78rem; margin-top: 0.7rem;">
-          Saved to this device. Projector view inherits it.
-        </div>
-      </div>
     </div>
 
     <!-- Right column: live state -->
     <div class="col" style="flex: 2 1 500px; min-width: 320px;">
+      <div class="card" id="team-card" style="display: none;">
+        <div class="row between" style="margin-bottom: 1rem;">
+          <h3>Teams</h3>
+          <span class="muted mono" style="font-size: 0.85rem;">score = sum of members</span>
+        </div>
+        <div id="team-standings" class="team-standings"></div>
+      </div>
+
       <div class="card">
         <div class="row between" style="margin-bottom: 1rem;">
           <h3>Standings</h3>
@@ -155,30 +125,125 @@
         </div>
         <div id="matches"></div>
       </div>
-
-      <div class="card">
-        <h3 style="margin-bottom: 1rem;">Activity</h3>
-        <div id="activity" style="font-size: 0.92rem;"></div>
-      </div>
     </div>
   </div>
 </div>
+
+<!-- Settings drawer -->
+<div class="drawer-backdrop" id="settings-backdrop" hidden></div>
+<aside class="drawer" id="settings-drawer" aria-hidden="true" aria-label="Tournament settings">
+  <div class="drawer-head">
+    <h3>Settings</h3>
+    <button class="btn btn-ghost" id="settings-close" style="padding: 0.3rem 0.7rem;" aria-label="Close settings">✕</button>
+  </div>
+
+  <section class="drawer-section">
+    <div class="eyebrow" style="margin-bottom: 0.8rem;">Tournament</div>
+    <label for="rename-input">Name</label>
+    <div class="row" style="gap: 0.5rem;">
+      <input type="text" id="rename-input" maxlength="60" style="flex: 1;" value="{{ tournament_name }}">
+      <button class="btn" id="btn-rename">Save</button>
+    </div>
+    <div class="drawer-kv">
+      <div class="row between"><span class="muted">Code</span><span class="mono accent" style="letter-spacing: 0.15em;">{{ tid }}</span></div>
+      <div class="row between"><span class="muted">Join link</span><button class="btn btn-ghost" style="padding: 0.25rem 0.6rem; font-size: 0.78rem;" data-copy="join">Copy</button></div>
+      <div class="row between"><span class="muted">Projector link</span><button class="btn btn-ghost" style="padding: 0.25rem 0.6rem; font-size: 0.78rem;" data-copy="projector">Copy</button></div>
+    </div>
+    <a href="/projector/{{ tid }}" target="_blank" class="btn btn-ghost" style="margin-top: 0.9rem; width: 100%;">📺 Open projector view ↗</a>
+    <div class="muted" style="font-size: 0.78rem; margin-top: 0.5rem; line-height: 1.4;">
+      Share the projector link with spectators — anyone can watch live, no login needed.
+    </div>
+  </section>
+
+  <section class="drawer-section">
+    <div class="eyebrow" style="margin-bottom: 0.8rem;">Appearance</div>
+    <div class="theme-picker" id="theme-picker" role="radiogroup" aria-label="Color theme">
+      <label data-theme-name="forest">
+        <span class="swatch forest"></span>
+        <span class="swatch-label">Forest</span>
+        <input type="radio" name="theme" value="forest">
+      </label>
+      <label data-theme-name="royal">
+        <span class="swatch royal"></span>
+        <span class="swatch-label">Royal</span>
+        <input type="radio" name="theme" value="royal">
+      </label>
+      <label data-theme-name="crimson">
+        <span class="swatch crimson"></span>
+        <span class="swatch-label">Crimson</span>
+        <input type="radio" name="theme" value="crimson">
+      </label>
+      <label data-theme-name="ivory">
+        <span class="swatch ivory"></span>
+        <span class="swatch-label">Ivory</span>
+        <input type="radio" name="theme" value="ivory">
+      </label>
+    </div>
+    <div class="muted" style="font-size: 0.78rem; margin-top: 0.7rem;">
+      Saved to this device. Projector view inherits it.
+    </div>
+
+    <label for="bg-input" style="margin-top: 1.3rem;">Background image</label>
+    <div class="row" style="gap: 0.5rem;">
+      <input type="text" id="bg-input" placeholder="https://…" style="flex: 1;">
+      <button class="btn" id="btn-bg-save">Save</button>
+    </div>
+    <button class="btn btn-ghost" id="btn-bg-clear" style="margin-top: 0.5rem; padding: 0.3rem 0.7rem; font-size: 0.82rem;">Clear background</button>
+    <div class="muted" style="font-size: 0.78rem; margin-top: 0.5rem; line-height: 1.4;">
+      Paste an image link to give your group's dashboard & projector a personal backdrop.
+    </div>
+  </section>
+
+  <section class="drawer-section danger">
+    <div class="eyebrow" style="margin-bottom: 0.6rem;">Danger zone</div>
+    <p class="muted" style="font-size: 0.85rem; line-height: 1.4;">Ending the tournament locks all results and shows everyone the final standings.</p>
+    <button id="btn-end-tournament" class="btn btn-danger" style="width: 100%; margin-top: 0.7rem;">End tournament</button>
+  </section>
+</aside>
 {% endblock %}
 
 {% block scripts %}
 <script>
 const TID = "{{ tid }}";
 const TOKEN = "{{ token }}";
+const MODE_LABELS = { swiss: 'Swiss', round_robin: 'Round-robin', random: 'Random', manual: 'Manual' };
 
-document.getElementById('join-link').textContent = `${location.origin}/join/${TID}`;
+const JOIN_LINK = `${location.origin}/join/${TID}`;
+const PROJECTOR_LINK = `${location.origin}/projector/${TID}`;
+document.getElementById('join-link').textContent = JOIN_LINK;
 
 let LATEST_STATE = null;
+let TEAMS_BY_ID = {};   // team_id -> {id,name,color}
+let PLAYER_TEAM = {};   // player_id -> team_id
 
 function render(state) {
   LATEST_STATE = state;
   const t = state.tournament;
   const players = state.players || [];
   const matches = state.current_matches || [];
+  const teams = state.teams || [];
+
+  // Team lookups used by standings, the board, and the team leaderboard.
+  TEAMS_BY_ID = {};
+  teams.forEach(tm => { TEAMS_BY_ID[tm.id] = tm; });
+  PLAYER_TEAM = {};
+  players.forEach(p => { if (p.team_id) PLAYER_TEAM[p.id] = p.team_id; });
+
+  const teamCard = document.getElementById('team-card');
+  if (teams.length) {
+    teamCard.style.display = 'block';
+    document.getElementById('team-standings').innerHTML = renderTeamStandings(players, teams);
+  } else {
+    teamCard.style.display = 'none';
+  }
+
+  // Personalization: background image (don't clobber the field while editing).
+  applyBackground(t.background_url);
+  const bgInput = document.getElementById('bg-input');
+  if (bgInput && document.activeElement !== bgInput) bgInput.value = t.background_url || '';
+
+  // Header name can change via the rename control / another host tab.
+  document.getElementById('t-name').textContent = t.name;
 
   // Stats
   document.getElementById('stat-players').textContent = players.length;
@@ -194,31 +259,41 @@ function render(state) {
 
   // Standings
   document.getElementById('standings-count').textContent = `${players.length} players`;
-  document.getElementById('standings').innerHTML = renderStandings(players, t);
+  document.getElementById('standings').innerHTML = renderStandings(players, t, teams);
 
   // Matches
   document.getElementById('round-info').textContent =
     t.current_round ? `Round ${t.current_round}` : 'Not started';
   document.getElementById('matches').innerHTML = renderMatches(matches, t);
 
-  // Activity feed
-  document.getElementById('activity').innerHTML = renderActivity(state.events || []);
-
-  // Manual mode UI
-  const mode = document.querySelector('input[name=rmode]:checked').value;
+  // Pairing mode is locked to the tournament's chosen mode — display it and
+  // show the manual builder only when that locked mode is 'manual'.
+  const mode = t.pairing_mode;
+  const modeLabel = document.getElementById('pairing-mode-label');
+  if (modeLabel) modeLabel.textContent = MODE_LABELS[mode] || mode;
   toggleManualCard(mode, players);
 
   // Tournament finished?
   if (t.status === 'finished') {
-    document.getElementById('btn-start-round').disabled = true;
-    document.getElementById('btn-start-round').textContent = 'Tournament finished';
+    const btn = document.getElementById('btn-start-round');
+    btn.disabled = true;
+    btn.textContent = 'Tournament finished';
   }
 }
 
-function renderStandings(players, t) {
+function teamDot(teamId, marginRight) {
+  const tm = TEAMS_BY_ID[teamId];
+  if (!tm) return '';
+  const m = marginRight ? ' margin-right: 0.45rem;' : '';
+  return `<span class="team-dot" style="background: ${tm.color};${m}" title="${EP.escape(tm.name)}"></span>`;
+}
+
+function renderStandings(players, t, teams) {
   if (!players.length) {
     return '<p class="muted">No players yet. Share the QR code or tournament code.</p>';
   }
+  const teamMode = teams && teams.length;
+  const canAssign = teamMode && t.status === 'lobby';
   return `
     <table style="width: 100%; border-collapse: collapse; font-size: 0.92rem;">
       <thead>
@@ -236,12 +311,13 @@ function renderStandings(players, t) {
         ${players.map((p, i) => `
           <tr style="border-top: 1px solid var(--line);">
             <td style="padding: 0.6rem 0.4rem; font-family: var(--font-mono); color: ${i === 0 ? 'var(--gold)' : 'var(--ink-mute)'};">${i + 1}</td>
-            <td style="padding: 0.6rem 0.4rem; font-weight: 500;">${EP.escape(p.name)}</td>
+            <td style="padding: 0.6rem 0.4rem; font-weight: 500;">${teamMode ? teamDot(p.team_id, true) : ''}${EP.escape(p.name)}</td>
             <td style="padding: 0.6rem 0.4rem; text-align: right; font-family: var(--font-mono); color: var(--ink-faint); font-size: 0.85rem;">${p.elo}</td>
             <td style="padding: 0.6rem 0.4rem; text-align: right; font-family: var(--font-mono); color: var(--lime); font-weight: 600;">${EP.formatScore(p.score)}</td>
             <td style="padding: 0.6rem 0.4rem; text-align: right; font-family: var(--font-mono); color: var(--ink-faint); font-size: 0.85rem;">${EP.formatScore(p.buchholz)}</td>
             <td style="padding: 0.6rem 0.4rem; text-align: right; font-family: var(--font-mono); color: var(--ink-faint); font-size: 0.85rem;">${EP.formatScore(p.sonneborn_berger || 0)}</td>
-            <td style="padding: 0.6rem 0.4rem; text-align: right;">
+            <td style="padding: 0.6rem 0.4rem; text-align: right; white-space: nowrap;">
+              ${canAssign ? `<select data-action="set-team" data-pid="${EP.escape(p.id)}" style="width: auto; padding: 0.2rem 0.4rem; font-size: 0.78rem; margin-right: 0.3rem;">${teams.map(tm => `<option value="${EP.escape(tm.id)}" ${tm.id === p.team_id ? 'selected' : ''}>${EP.escape(tm.name)}</option>`).join('')}</select>` : ''}
               ${t.status === 'lobby' ? `<button class="btn btn-ghost" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" data-action="remove-player" data-pid="${EP.escape(p.id)}" data-name="${EP.escape(p.name)}">×</button>` : ''}
             </td>
           </tr>
@@ -251,108 +327,92 @@ function renderStandings(players, t) {
   `;
 }
 
-// Task #7: when the tournament is on-site, every non-bye match row gets a
-// small inline number input next to its board number for editing the table.
-// We commit changes on blur and on Enter; Escape reverts. Offsite events
-// see no table UI at all — the input simply isn't rendered.
+function renderTeamStandings(players, teams) {
+  const totals = {};
+  teams.forEach(tm => { totals[tm.id] = { name: tm.name, color: tm.color, score: 0, count: 0 }; });
+  players.forEach(p => {
+    if (p.team_id && totals[p.team_id]) { totals[p.team_id].score += p.score; totals[p.team_id].count += 1; }
+  });
+  const rows = teams.map(tm => totals[tm.id]).sort((a, b) => b.score - a.score);
+  return rows.map(r => `
+    <div class="team-row" style="--tc: ${r.color};">
+      <span class="team-dot" style="background: ${r.color};"></span>
+      <span class="team-name">${EP.escape(r.name)} <span class="team-meta">· ${r.count} player${r.count === 1 ? '' : 's'}</span></span>
+      <span class="team-score">${EP.formatScore(r.score)}</span>
+    </div>`).join('');
+}
+
+// On-site tournaments get a small table-number input per non-bye match. Commits
+// on blur and Enter; Escape reverts. Offsite events never render it.
 function renderTableEditor(m, onsite) {
   if (!onsite || m.status === 'bye') return '';
   const val = (m.table_number != null) ? m.table_number : '';
   return `
-    <span class="row" style="gap: 0.35rem; align-items: center; margin-left: 0.6rem;">
+    <span class="row" style="gap: 0.35rem; align-items: center;">
       <span class="eyebrow" style="font-size: 0.62rem;">Table</span>
       <input
-        type="number"
-        min="1"
-        max="9999"
-        value="${val}"
-        data-mid="${EP.escape(m.id)}"
-        data-orig="${val}"
-        data-action="table-input"
+        type="number" min="1" max="9999" value="${val}"
+        data-mid="${EP.escape(m.id)}" data-orig="${val}" data-action="table-input"
         class="table-input"
         style="width: 4.2rem; padding: 0.18rem 0.4rem; font-family: var(--font-mono); font-size: 0.82rem; background: transparent; color: var(--lime); border: 1px solid var(--line); border-radius: 4px; text-align: center;"
-        placeholder="—"
-      >
+        placeholder="—">
     </span>`;
 }
 
+// White always sits on the left, black on the right, each in its own grid cell
+// with ellipsis truncation — so long names never collide the way the old
+// single-line "○ A vs ● B" span did.
 function renderMatches(matches, t) {
   if (!matches.length) {
-    return '<p class="muted">No matches in progress. Start a round when ready.</p>';
+    return '<p class="muted">No matches yet. Start a round when everyone\'s in.</p>';
   }
   const onsite = t && t.location_mode === 'onsite';
   return matches.map(m => {
     if (m.status === 'bye') {
       return `
-        <div class="row between" style="padding: 0.7rem 0.4rem; border-top: 1px solid var(--line); align-items: center;">
-          <div class="row" style="gap: 0.8rem; align-items: center;">
-            <span class="mono faint">${m.board_number}</span>
-            <span><strong>${EP.escape(m.white_name)}</strong> <span class="faint">— bye</span></span>
-          </div>
-          <span class="badge badge-bye">Bye</span>
-        </div>
-      `;
+        <div class="match-board is-bye">
+          <div class="mb-board">${m.board_number}</div>
+          <div class="mb-side white"><span class="mb-chip white"></span><span class="nm">${EP.escape(m.white_name)}</span></div>
+          <div class="mb-vs">—</div>
+          <div class="mb-side black"><span class="nm faint">bye</span></div>
+          <div class="mb-status"><span class="badge badge-bye">Bye</span></div>
+        </div>`;
     }
-    const statusBadge = {
-      pending: '<span class="badge badge-pending">In progress</span>',
-      reported: '<span class="badge badge-reported">Reported</span>',
-      confirmed: '<span class="badge badge-confirmed">Confirmed</span>',
-      disputed: '<span class="badge badge-disputed">⚠ Disputed</span>',
-    }[m.status] || '';
 
-    let resultText = '';
-    if (m.result === 'white') resultText = `<span class="faint mono" style="margin-left: 0.5rem;">${EP.escape(m.white_name)} won</span>`;
-    if (m.result === 'black') resultText = `<span class="faint mono" style="margin-left: 0.5rem;">${EP.escape(m.black_name)} won</span>`;
-    if (m.result === 'draw') resultText = `<span class="faint mono" style="margin-left: 0.5rem;">Draw</span>`;
-
-    let actions = '';
-    if (m.status === 'disputed' || m.status === 'reported') {
-      actions = `
-        <div class="row" style="gap: 0.4rem; margin-top: 0.6rem; flex-wrap: wrap;">
-          <span class="eyebrow" style="font-size: 0.65rem; align-self: center;">Override:</span>
-          <button class="btn btn-ghost" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;" data-action="host-resolve" data-mid="${EP.escape(m.id)}" data-result="white">${EP.escape(m.white_name)} wins</button>
-          <button class="btn btn-ghost" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;" data-action="host-resolve" data-mid="${EP.escape(m.id)}" data-result="draw">Draw</button>
-          <button class="btn btn-ghost" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;" data-action="host-resolve" data-mid="${EP.escape(m.id)}" data-result="black">${EP.escape(m.black_name)} wins</button>
-        </div>
-      `;
+    let statusCell;
+    if (m.status === 'confirmed') {
+      const score = m.result === 'white' ? '1–0' : m.result === 'black' ? '0–1' : '½–½';
+      statusCell = `<span class="mb-score mono">${score}</span>`;
+    } else {
+      statusCell = {
+        pending: '<span class="badge badge-pending">In progress</span>',
+        reported: '<span class="badge badge-reported">Reported</span>',
+        disputed: '<span class="badge badge-disputed">⚠ Disputed</span>',
+      }[m.status] || '';
     }
+
+    // Actions row: host override buttons (when there's something to arbitrate)
+    // plus the on-site table editor. Rendered full-width beneath the board.
+    let actionsInner = '';
+    if (m.status === 'reported' || m.status === 'disputed') {
+      actionsInner += `
+        <span class="eyebrow" style="font-size: 0.62rem; align-self: center;">Set result:</span>
+        <button class="btn btn-ghost" style="padding: 0.3rem 0.6rem; font-size: 0.78rem;" data-action="host-resolve" data-mid="${EP.escape(m.id)}" data-result="white">${EP.escape(m.white_name)}</button>
+        <button class="btn btn-ghost" style="padding: 0.3rem 0.6rem; font-size: 0.78rem;" data-action="host-resolve" data-mid="${EP.escape(m.id)}" data-result="draw">Draw</button>
+        <button class="btn btn-ghost" style="padding: 0.3rem 0.6rem; font-size: 0.78rem;" data-action="host-resolve" data-mid="${EP.escape(m.id)}" data-result="black">${EP.escape(m.black_name)}</button>`;
+    }
+    actionsInner += renderTableEditor(m, onsite);
+    const actions = actionsInner ? `<div class="mb-actions">${actionsInner}</div>` : '';
 
     return `
-      <div style="padding: 0.8rem 0.4rem; border-top: 1px solid var(--line);">
-        <div class="row between" style="align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-          <div class="row" style="gap: 0.8rem; align-items: center; flex-wrap: wrap;">
-            <span class="mono faint">${m.board_number}</span>
-            <span><strong>○ ${EP.escape(m.white_name)}</strong> <span class="faint">vs</span> <strong>● ${EP.escape(m.black_name)}</strong></span>
-            ${resultText}
-            ${renderTableEditor(m, onsite)}
-          </div>
-          ${statusBadge}
-        </div>
+      <div class="match-board status-${m.status}">
+        <div class="mb-board">${m.board_number}</div>
+        <div class="mb-side white"><span class="mb-chip white"></span>${teamDot(PLAYER_TEAM[m.white_player_id])}<span class="nm">${EP.escape(m.white_name)}</span></div>
+        <div class="mb-vs">vs</div>
+        <div class="mb-side black"><span class="nm">${EP.escape(m.black_name)}</span>${teamDot(PLAYER_TEAM[m.black_player_id])}<span class="mb-chip black"></span></div>
+        <div class="mb-status">${statusCell}</div>
         ${actions}
-      </div>
-    `;
-  }).join('');
-}
-
-function renderActivity(events) {
-  if (!events.length) return '<p class="muted">Activity will show here once the tournament begins.</p>';
-  return events.slice(0, 12).map(ev => {
-    const time = ev.created_at ? new Date(ev.created_at + 'Z').toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '';
-    const colorByKind = {
-      result: 'var(--lime)',
-      join: 'var(--moss)',
-      round_start: 'var(--gold)',
-      dispute: 'var(--rose)',
-      tournament_end: 'var(--ink-mute)',
-      tournament_created: 'var(--ink-mute)',
-    }[ev.kind] || 'var(--ink-mute)';
-    return `
-      <div class="row" style="gap: 0.8rem; padding: 0.4rem 0; align-items: baseline;">
-        <span class="mono faint" style="font-size: 0.78rem; min-width: 50px;">${time}</span>
-        <span style="width: 6px; height: 6px; border-radius: 50%; background: ${colorByKind}; flex-shrink: 0;"></span>
-        <span>${EP.escape(ev.message)}</span>
-      </div>
-    `;
+      </div>`;
   }).join('');
 }
 
@@ -371,16 +431,12 @@ function toggleManualCard(mode, players) {
 }
 
 async function startRound() {
-  const mode = document.querySelector('input[name=rmode]:checked').value;
   const btn = document.getElementById('btn-start-round');
   btn.disabled = true;
   btn.textContent = 'Starting…';
   try {
-    if (mode === 'manual') {
-      await EP.api('POST', `/api/tournaments/${TID}/rounds?host_token=${encodeURIComponent(TOKEN)}`, { mode_override: 'manual' });
-    } else {
-      await EP.api('POST', `/api/tournaments/${TID}/rounds?host_token=${encodeURIComponent(TOKEN)}`, { mode_override: mode });
-    }
+    // Pairing mode is fixed at creation — the server always uses it.
+    await EP.api('POST', `/api/tournaments/${TID}/rounds?host_token=${encodeURIComponent(TOKEN)}`);
     EP.toast('Round started!');
   } catch (err) {
     EP.toast(err.message, 'error');
@@ -395,6 +451,37 @@ async function endTournament() {
   try {
     await EP.api('POST', `/api/tournaments/${TID}/end?host_token=${encodeURIComponent(TOKEN)}`);
     EP.toast('Tournament ended.');
+    closeSettings();
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  }
+}
+
+// Apply a validated background image URL to the fixed backdrop layer. Anything
+// that isn't a clean http(s) URL is ignored (the server validates on save too).
+function applyBackground(url) {
+  const el = document.getElementById('tourney-bg');
+  if (!el) return;
+  const safe = (url && /^https?:\/\/[^\s"'()<>\\]+$/.test(url)) ? url : null;
+  el.style.backgroundImage = safe ? `url("${safe}")` : '';
+}
+
+async function saveBackground(url) {
+  try {
+    await EP.api('POST', `/api/tournaments/${TID}/background?host_token=${encodeURIComponent(TOKEN)}`, { url });
+    EP.toast(url ? 'Background updated.' : 'Background cleared.');
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  }
+}
+
+async function renameTournament() {
+  const input = document.getElementById('rename-input');
+  const name = input.value.trim();
+  if (!name) { EP.toast('Name can\'t be empty.', 'error'); return; }
+  try {
+    await EP.api('POST', `/api/tournaments/${TID}/name?host_token=${encodeURIComponent(TOKEN)}`, { name });
+    EP.toast('Name updated.');
   } catch (err) {
     EP.toast(err.message, 'error');
   }
@@ -404,6 +491,14 @@ async function removePlayer(pid, name) {
   if (!confirm(`Remove ${name}?`)) return;
   try {
     await EP.api('DELETE', `/api/tournaments/${TID}/players/${pid}?host_token=${encodeURIComponent(TOKEN)}`);
+  } catch (err) {
+    EP.toast(err.message, 'error');
+  }
+}
+
+async function setTeam(pid, teamId) {
+  try {
+    await EP.api('POST', `/api/tournaments/${TID}/players/${pid}/team?host_token=${encodeURIComponent(TOKEN)}`, { team_id: teamId });
   } catch (err) {
     EP.toast(err.message, 'error');
   }
@@ -433,15 +528,13 @@ async function addManualMatch() {
   }
 }
 
-// Task #7: table-number editing. Commits on blur and on Enter. Escape reverts
-// to whatever value the input had on render, without hitting the API. The
-// data-orig attribute lets us distinguish "no change" from "user touched it"
-// so we don't fire requests when the user just clicks in and tabs out.
+// Table-number editing. Commits on blur and Enter; Escape reverts without an
+// API call. data-orig distinguishes "no change" from "user touched it".
 async function setTable(input) {
   const mid = input.dataset.mid;
   const orig = input.dataset.orig;
   const raw = input.value.trim();
-  if (raw === orig) return;  // no change
+  if (raw === orig) return;
   const num = raw === '' ? null : parseInt(raw, 10);
   if (num !== null && (isNaN(num) || num < 1 || num > 9999)) {
     EP.toast('Table number must be 1–9999.', 'error');
@@ -452,8 +545,6 @@ async function setTable(input) {
     await EP.api('POST', `/api/tournaments/${TID}/matches/${mid}/table?host_token=${encodeURIComponent(TOKEN)}`,
       { table_number: num });
     input.dataset.orig = (num == null) ? '' : String(num);
-    // No toast on success — silent saves feel right for an inline edit; the
-    // updated number echoing back via WS broadcast is confirmation enough.
   } catch (err) {
     EP.toast(err.message, 'error');
     input.value = orig;
@@ -463,7 +554,7 @@ async function setTable(input) {
 function tableKey(ev, input) {
   if (ev.key === 'Enter') {
     ev.preventDefault();
-    input.blur();  // triggers onchange
+    input.blur();
   } else if (ev.key === 'Escape') {
     ev.preventDefault();
     input.value = input.dataset.orig;
@@ -471,26 +562,64 @@ function tableKey(ev, input) {
   }
 }
 
-// Event delegation — no inline handlers in rendered HTML. This avoids the
-// HTML-escape-then-decode trap: any user-controlled value (player names,
-// IDs) lives in element text or data-* attributes, never inside a JS
-// string literal in an onclick. Re-rendering innerHTML wipes any per-node
-// listeners we attached before, which is exactly why delegation on the
-// stable parent containers is the right shape here.
+// --- Settings drawer -------------------------------------------------------
+const drawer = document.getElementById('settings-drawer');
+const backdrop = document.getElementById('settings-backdrop');
+function openSettings() {
+  backdrop.hidden = false;
+  // Force a reflow so the transform/opacity transitions still play when we add
+  // the classes on the next line. (rAF gets throttled when the tab is hidden,
+  // which would leave the drawer stuck closed.)
+  void backdrop.offsetWidth;
+  drawer.classList.add('open');
+  backdrop.classList.add('show');
+  drawer.setAttribute('aria-hidden', 'false');
+}
+function closeSettings() {
+  drawer.classList.remove('open');
+  backdrop.classList.remove('show');
+  drawer.setAttribute('aria-hidden', 'true');
+  setTimeout(() => { backdrop.hidden = true; }, 300);
+}
+document.getElementById('btn-settings').addEventListener('click', openSettings);
+document.getElementById('settings-close').addEventListener('click', closeSettings);
+backdrop.addEventListener('click', closeSettings);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && drawer.classList.contains('open')) closeSettings(); });
+document.getElementById('btn-rename').addEventListener('click', renameTournament);
+document.getElementById('rename-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') renameTournament(); });
+document.getElementById('btn-bg-save').addEventListener('click', () => saveBackground(document.getElementById('bg-input').value.trim()));
+document.getElementById('btn-bg-clear').addEventListener('click', () => { document.getElementById('bg-input').value = ''; saveBackground(''); });
+
+// Copy-link buttons
+drawer.addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('[data-copy]');
+  if (!btn) return;
+  const link = btn.dataset.copy === 'projector' ? PROJECTOR_LINK : JOIN_LINK;
+  try {
+    await navigator.clipboard.writeText(link);
+    EP.toast('Link copied.');
+  } catch (e) {
+    EP.toast(link, 'info');  // clipboard blocked — show it so they can copy manually
+  }
+});
+
+// Event delegation for the live-updating panels. Re-rendering innerHTML wipes
+// per-node listeners, so we delegate on the stable parent containers.
 document.getElementById('standings').addEventListener('click', (ev) => {
   const btn = ev.target.closest('[data-action="remove-player"]');
   if (!btn) return;
   removePlayer(btn.dataset.pid, btn.dataset.name);
+});
+document.getElementById('standings').addEventListener('change', (ev) => {
+  const sel = ev.target.closest('[data-action="set-team"]');
+  if (!sel) return;
+  setTeam(sel.dataset.pid, sel.value);
 });
 document.getElementById('matches').addEventListener('click', (ev) => {
   const btn = ev.target.closest('[data-action="host-resolve"]');
   if (!btn) return;
   hostResolve(btn.dataset.mid, btn.dataset.result);
 });
-// Table inputs: 'change' fires on blur after value mutation. We attach
-// listeners on the matches container with the same delegation pattern
-// so freshly-rendered inputs are covered automatically. 'change' and
-// 'keydown' both bubble, which makes this work.
 document.getElementById('matches').addEventListener('change', (ev) => {
   const input = ev.target.closest('[data-action="table-input"]');
   if (!input) return;
@@ -505,16 +634,10 @@ document.getElementById('matches').addEventListener('keydown', (ev) => {
 document.getElementById('btn-start-round').addEventListener('click', startRound);
 document.getElementById('btn-end-tournament').addEventListener('click', endTournament);
 document.getElementById('btn-add-match').addEventListener('click', addManualMatch);
-document.querySelectorAll('input[name=rmode]').forEach(r => {
-  r.addEventListener('change', () => {
-    if (LATEST_STATE) toggleManualCard(r.value, LATEST_STATE.players || []);
-  });
-});
 
-// Task #9: theme picker wiring. The :has() selector handles the
-// checked-state styling in modern browsers; the .is-checked class
-// is a fallback for older Safari. Both stay in sync because we
-// flip the class manually on every change and on the initial paint.
+// Theme picker (now inside the settings drawer). Keeps the attribute,
+// localStorage, meta theme-color and the picker's .is-checked classes in sync,
+// and reacts to the cross-tab 'ep:theme' event.
 (function initThemePicker() {
   const picker = document.getElementById('theme-picker');
   if (!picker) return;
@@ -531,20 +654,10 @@ document.querySelectorAll('input[name=rmode]').forEach(r => {
   reflect(current);
   radios.forEach(r => {
     r.addEventListener('change', () => {
-      if (r.checked) {
-        EP.applyTheme(r.value);
-        // applyTheme also fires 'ep:theme' below — but our own click is
-        // the source, so we update the picker UI directly here too.
-        reflect(r.value);
-      }
+      if (r.checked) { EP.applyTheme(r.value); reflect(r.value); }
     });
   });
-  // If another tab applies a different theme, common.js will fire the
-  // 'ep:theme' event from its storage-sync handler. Catch it here so
-  // the picker stays accurate without us re-reading localStorage.
-  window.addEventListener('ep:theme', (e) => {
-    reflect(e.detail.name);
-  });
+  window.addEventListener('ep:theme', (e) => reflect(e.detail.name));
 })();
 
 // Initial load + WS

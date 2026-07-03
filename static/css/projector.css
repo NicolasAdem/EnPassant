@@ -12,7 +12,7 @@
   z-index: 1;
   height: 100vh;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr;  /* header + body; the live-feed footer was removed for a calmer, casual look */
   padding: 2vh 3vw;
   gap: 2vh;
 }
@@ -200,6 +200,37 @@
   color: var(--ink-faint);
   margin-left: 0.5rem;
 }
+
+/* Team summary pills (team-mode tournaments) */
+.proj-team-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1vw;
+  margin-bottom: 1.4vh;
+}
+.proj-team-summary .team-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7vh 1.1vw;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--tc, var(--line));
+  border-radius: 8px;
+  background: var(--bg-2);
+}
+.proj-team-summary .team-pill .tp-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(1rem, 1.5vw, 1.5rem);
+}
+.proj-team-summary .team-pill .tp-score {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--lime);
+  font-size: clamp(1rem, 1.6vw, 1.6rem);
+  font-variant-numeric: tabular-nums;
+}
+.proj-team-summary .team-dot { width: 14px; height: 14px; }
 
 /* Live matches panel */
 .proj-matches {

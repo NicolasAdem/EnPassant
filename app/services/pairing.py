@@ -565,8 +565,19 @@ def _find_swap(
 
 
 def _can_play(p1: dict, p2: dict, past_matches: List[dict]) -> bool:
-    """Two players can face each other if they're distinct and haven't met."""
+    """Two players can face each other if they're distinct, haven't met, and
+    aren't on the same team.
+
+    Team check only bites when BOTH players carry a truthy team_id — non-team
+    tournaments leave team_id None on every player, so this is a no-op there.
+    Modeling "same team" as just another illegal edge means the whole Swiss
+    machinery (fold, max-matching, floater cascade) avoids intra-team pairings
+    for free, exactly the way it already avoids rematches.
+    """
     if p1["id"] == p2["id"]:
+        return False
+    t1, t2 = p1.get("team_id"), p2.get("team_id")
+    if t1 and t2 and t1 == t2:
         return False
     return not _have_played(p1["id"], p2["id"], past_matches)
 
@@ -588,15 +599,30 @@ def pair_random(players: List[dict], past_matches: List[dict]) -> List[dict]:
 
     pairings = []
     board = 1
-    for i in range(0, len(shuffled), 2):
-        p1, p2 = shuffled[i], shuffled[i + 1]
-        w, bl = _assign_colors(p1, p2, past_matches)
-        pairings.append({
-            "white_player_id": w,
-            "black_player_id": bl,
-            "board_number": board,
-        })
-        board += 1
+
+    # Team mode: pair legality-aware so teammates don't meet (and, as a side
+    # benefit, immediate rematches are avoided too). Non-team tournaments keep
+    # the original pure-sequential shuffle so their behavior is unchanged.
+    if any(p.get("team_id") for p in shuffled):
+        remaining = shuffled[:]
+        while len(remaining) >= 2:
+            p1 = remaining.pop(0)
+            idx = next((k for k, q in enumerate(remaining)
+                        if _can_play(p1, q, past_matches)), 0)  # fall back to first if none legal
+            p2 = remaining.pop(idx)
+            w, bl = _assign_colors(p1, p2, past_matches)
+            pairings.append({"white_player_id": w, "black_player_id": bl, "board_number": board})
+            board += 1
+    else:
+        for i in range(0, len(shuffled), 2):
+            p1, p2 = shuffled[i], shuffled[i + 1]
+            w, bl = _assign_colors(p1, p2, past_matches)
+            pairings.append({
+                "white_player_id": w,
+                "black_player_id": bl,
+                "board_number": board,
+            })
+            board += 1
 
     if bye_player:
         pairings.append({

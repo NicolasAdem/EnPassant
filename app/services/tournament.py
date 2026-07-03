@@ -4,10 +4,17 @@ Business logic for tournaments. Routers stay thin; this does the work.
 
 import uuid
 import json
+import re
 import secrets
 from typing import List, Optional
 from ..database import db
 from . import pairing
+
+
+# Distinct, theme-agnostic team colors (readable on both dark and Ivory).
+# Index 0..3 map to the first four teams in creation order.
+_TEAM_COLORS = ["#5cc8ff", "#ff7a7a", "#b8ff5c", "#c9a0ff"]
+MAX_TEAMS = 4
 
 
 def _short_id() -> str:
@@ -22,12 +29,16 @@ def _uuid() -> str:
 
 
 def create_tournament(name: str, pairing_mode: str = "swiss",
-                      location_mode: str = "offsite") -> dict:
+                      location_mode: str = "offsite",
+                      host_user_id: Optional[str] = None) -> dict:
     """Create a tournament.
 
     location_mode: 'onsite' (physical event with table numbers) or 'offsite'
     (online / no table UI). Defaults to 'offsite' so callers that don't know
     about the field get the same behavior as before task #7.
+
+    host_user_id: the account that owns this tournament. Set from the logged-in
+    user; drives the host's "your tournaments" lobby list.
     """
     tid = _short_id()
     # Ensure uniqueness
@@ -39,12 +50,12 @@ def create_tournament(name: str, pairing_mode: str = "swiss",
             tid = _short_id()
         host_token = secrets.token_urlsafe(24)
         conn.execute(
-            "INSERT INTO tournaments (id, name, host_token, pairing_mode, location_mode) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (tid, name, host_token, pairing_mode, location_mode),
+            "INSERT INTO tournaments (id, name, host_token, host_user_id, pairing_mode, location_mode) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (tid, name, host_token, host_user_id, pairing_mode, location_mode),
         )
         _log_event(conn, tid, "tournament_created", f"Tournament '{name}' created.")
-    return {"id": tid, "name": name, "host_token": host_token,
+    return {"id": tid, "name": name, "host_token": host_token, "host_user_id": host_user_id,
             "pairing_mode": pairing_mode, "location_mode": location_mode}
 
 
@@ -54,29 +65,165 @@ def get_tournament(tid: str) -> Optional[dict]:
         return dict(row) if row else None
 
 
+def create_teams(tid: str, names: List[str]) -> List[dict]:
+    """Create the tournament's teams from a list of names (2..MAX_TEAMS). Colors
+    are auto-assigned from the palette in order. Returns the created teams.
+    Names are trimmed; blanks are dropped before counting."""
+    clean = [n.strip()[:30] for n in names if n and n.strip()]
+    if not (2 <= len(clean) <= MAX_TEAMS):
+        return []
+    created = []
+    with db() as conn:
+        for i, name in enumerate(clean):
+            tmid = _uuid()
+            color = _TEAM_COLORS[i % len(_TEAM_COLORS)]
+            conn.execute(
+                "INSERT INTO teams (id, tournament_id, name, color, sort_order) VALUES (?, ?, ?, ?, ?)",
+                (tmid, tid, name, color, i),
+            )
+            created.append({"id": tmid, "tournament_id": tid, "name": name, "color": color, "sort_order": i})
+    return created
+
+
+def list_teams(tid: str) -> List[dict]:
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM teams WHERE tournament_id = ? ORDER BY sort_order ASC",
+            (tid,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def has_teams(tid: str) -> bool:
+    with db() as conn:
+        row = conn.execute("SELECT 1 FROM teams WHERE tournament_id = ? LIMIT 1", (tid,)).fetchone()
+        return row is not None
+
+
+def set_player_team(tid: str, pid: str, team_id: Optional[str]) -> Optional[dict]:
+    """Host reassigns a player's team. Lobby only. team_id must belong to this
+    tournament (or None to clear). Returns {"ok": True} or {"error": ...}."""
+    t = get_tournament(tid)
+    if not t:
+        return None
+    if t["status"] != "lobby":
+        return {"error": "Teams can only be changed before the tournament starts."}
+    with db() as conn:
+        if team_id is not None:
+            ok = conn.execute(
+                "SELECT 1 FROM teams WHERE id = ? AND tournament_id = ?", (team_id, tid)
+            ).fetchone()
+            if not ok:
+                return {"error": "Unknown team."}
+        cur = conn.execute(
+            "UPDATE players SET team_id = ? WHERE id = ? AND tournament_id = ?",
+            (team_id, pid, tid),
+        )
+        if cur.rowcount == 0:
+            return {"error": "Player not found."}
+    return {"ok": True}
+
+
+# Background image URL: http(s) only, and none of the characters that could
+# break out of the CSS url("...") context it ends up in on the client.
+_BG_URL_RE = re.compile(r'^https?://[^\s"\'()<>\\]+$')
+
+
+def set_background(tid: str, url: Optional[str]) -> Optional[dict]:
+    """Set or clear the tournament's background image URL. Empty/blank clears it.
+    Returns {"background_url": ...}, {"error": ...}, or None if not found."""
+    url = (url or "").strip()
+    if url == "":
+        val = None
+    elif _BG_URL_RE.match(url):
+        val = url[:500]
+    else:
+        return {"error": "Enter a valid http(s) image URL."}
+    with db() as conn:
+        cur = conn.execute("UPDATE tournaments SET background_url = ? WHERE id = ?", (val, tid))
+        if cur.rowcount == 0:
+            return None
+    return {"background_url": val}
+
+
+def rename_tournament(tid: str, name: str) -> Optional[dict]:
+    """Update the tournament's display name. Returns the new name or None if the
+    tournament doesn't exist / the name is empty after trimming."""
+    name = name.strip()[:60]
+    if not name:
+        return None
+    with db() as conn:
+        cur = conn.execute("UPDATE tournaments SET name = ? WHERE id = ?", (name, tid))
+        if cur.rowcount == 0:
+            return None
+    return {"id": tid, "name": name}
+
+
 def verify_host(tid: str, token: str) -> bool:
     t = get_tournament(tid)
     return t is not None and t["host_token"] == token
 
 
-def add_player(tid: str, name: str, elo: int = 1200) -> Optional[dict]:
-    """Add a player to a tournament. Returns the player or None if tournament missing."""
+def add_player(tid: str, name: str, elo: int = 1200,
+               user_id: Optional[str] = None,
+               team_id: Optional[str] = None) -> Optional[dict]:
+    """Add a player to a tournament. Returns the player, an {"error": ...} dict,
+    or None if the tournament is missing/finished.
+
+    A logged-in user gets at most one player per tournament: if they've already
+    joined, we return the existing player rather than creating a duplicate.
+    New players may only join while the tournament is still in the lobby.
+
+    In team-mode tournaments a valid team_id is required; non-team tournaments
+    ignore it.
+    """
     t = get_tournament(tid)
     if not t:
         return None
     if t["status"] == "finished":
         return None
-    pid = _uuid()
+    if user_id:
+        existing = get_player_for_user(tid, user_id)
+        if existing:
+            return existing  # idempotent re-join — hand back their existing player
+    if t["status"] != "lobby":
+        return {"error": "This tournament has already started."}
     name = name.strip()[:40]
     if not name:
         return None
+
+    team_mode = has_teams(tid)
+    if team_mode:
+        if not team_id:
+            return {"error": "Pick a team to join."}
+        with db() as conn:
+            ok = conn.execute(
+                "SELECT 1 FROM teams WHERE id = ? AND tournament_id = ?", (team_id, tid)
+            ).fetchone()
+        if not ok:
+            return {"error": "Unknown team."}
+    else:
+        team_id = None  # ignore any team on a non-team tournament
+
+    pid = _uuid()
     with db() as conn:
         conn.execute(
-            "INSERT INTO players (id, tournament_id, name, elo) VALUES (?, ?, ?, ?)",
-            (pid, tid, name, elo),
+            "INSERT INTO players (id, tournament_id, user_id, team_id, name, elo) VALUES (?, ?, ?, ?, ?, ?)",
+            (pid, tid, user_id, team_id, name, elo),
         )
         _log_event(conn, tid, "join", f"{name} joined the tournament.", {"player_id": pid, "name": name})
-    return {"id": pid, "tournament_id": tid, "name": name, "elo": elo, "score": 0}
+    return {"id": pid, "tournament_id": tid, "user_id": user_id, "team_id": team_id,
+            "name": name, "elo": elo, "score": 0}
+
+
+def get_player_for_user(tid: str, user_id: str) -> Optional[dict]:
+    """The player row this account owns in the given tournament, if any."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM players WHERE tournament_id = ? AND user_id = ?",
+            (tid, user_id),
+        ).fetchone()
+        return dict(row) if row else None
 
 
 def remove_player(tid: str, pid: str) -> bool:
@@ -141,8 +288,13 @@ def list_current_round_matches(tid: str) -> List[dict]:
         return [dict(r) for r in rows]
 
 
-def start_next_round(tid: str, mode_override: Optional[str] = None) -> Optional[dict]:
-    """Generate pairings for the next round."""
+def start_next_round(tid: str) -> Optional[dict]:
+    """Generate pairings for the next round.
+
+    The pairing mode is fixed at creation and used for every round — there is
+    deliberately no per-round override. A tournament that starts Swiss stays
+    Swiss to the end, so standings and tiebreaks remain coherent.
+    """
     t = get_tournament(tid)
     if not t:
         return None
@@ -155,7 +307,7 @@ def start_next_round(tid: str, mode_override: Optional[str] = None) -> Optional[
     if current and any(m["status"] not in ("confirmed", "bye") for m in current):
         return {"error": "Previous round has unconfirmed matches."}
 
-    mode = mode_override or t["pairing_mode"]
+    mode = t["pairing_mode"]
     past = list_past_matches(tid)
     pairings = pairing.generate_pairings(mode, players, past)
 
@@ -618,6 +770,107 @@ def end_tournament(tid: str) -> bool:
     return True
 
 
+def lobbies_for_user(user_id: str) -> dict:
+    """Everything the lobby home needs for one account: tournaments they host
+    and tournaments they play in, each with a live "what's happening" summary.
+
+    Returns {"hosting": [...], "playing": [...]}. Both lists are newest-first.
+    """
+    with db() as conn:
+        hosting_rows = conn.execute(
+            "SELECT * FROM tournaments WHERE host_user_id = ? ORDER BY created_at DESC",
+            (user_id,),
+        ).fetchall()
+        playing_rows = conn.execute(
+            "SELECT t.*, p.id AS player_id FROM tournaments t "
+            "JOIN players p ON p.tournament_id = t.id "
+            "WHERE p.user_id = ? ORDER BY t.created_at DESC",
+            (user_id,),
+        ).fetchall()
+
+        hosting = []
+        for r in hosting_rows:
+            t = dict(r)
+            counts = conn.execute(
+                "SELECT COUNT(*) AS n FROM players WHERE tournament_id = ?", (t["id"],)
+            ).fetchone()
+            player_count = counts["n"]
+            pending = 0
+            disputes = 0
+            if t["current_round"]:
+                stats = conn.execute(
+                    """SELECT
+                         SUM(CASE WHEN status NOT IN ('confirmed', 'bye') THEN 1 ELSE 0 END) AS pending,
+                         SUM(CASE WHEN status = 'disputed' THEN 1 ELSE 0 END) AS disputes
+                       FROM matches m
+                       JOIN rounds rd ON rd.id = m.round_id
+                       WHERE m.tournament_id = ? AND rd.round_number = ?""",
+                    (t["id"], t["current_round"]),
+                ).fetchone()
+                pending = stats["pending"] or 0
+                disputes = stats["disputes"] or 0
+            hosting.append({
+                "id": t["id"], "name": t["name"], "status": t["status"],
+                "pairing_mode": t["pairing_mode"], "current_round": t["current_round"],
+                "host_token": t["host_token"], "player_count": player_count,
+                "pending_matches": pending, "disputes": disputes,
+            })
+
+        playing = []
+        for r in playing_rows:
+            t = dict(r)
+            playing.append({
+                "id": t["id"], "name": t["name"], "status": t["status"],
+                "current_round": t["current_round"], "player_id": t["player_id"],
+                **_player_lobby_status(conn, t, t["player_id"]),
+            })
+
+    return {"hosting": hosting, "playing": playing}
+
+
+def _player_lobby_status(conn, t: dict, pid: str) -> dict:
+    """Summarize a player's current situation for the lobby card. Returns
+    {"summary": str, "state": str} where state is one of:
+    waiting_start | ready | waiting_confirm | needs_confirm | disputed |
+    bye | done_round | finished.
+    """
+    if t["status"] == "finished":
+        return {"summary": "Finished", "state": "finished"}
+    if t["status"] == "lobby" or not t["current_round"]:
+        return {"summary": "Waiting for the host to start", "state": "waiting_start"}
+
+    row = conn.execute(
+        """SELECT m.status, m.result, m.reported_by,
+                  m.white_player_id, m.black_player_id,
+                  pw.name AS white_name, pb.name AS black_name
+           FROM matches m
+           JOIN rounds rd ON rd.id = m.round_id
+           LEFT JOIN players pw ON pw.id = m.white_player_id
+           LEFT JOIN players pb ON pb.id = m.black_player_id
+           WHERE m.tournament_id = ? AND rd.round_number = ?
+             AND (m.white_player_id = ? OR m.black_player_id = ?)""",
+        (t["id"], t["current_round"], pid, pid),
+    ).fetchone()
+
+    if not row:
+        return {"summary": f"Waiting for round {t['current_round'] + 1} pairings", "state": "waiting_start"}
+    m = dict(row)
+    if m["status"] == "bye":
+        return {"summary": "You have a bye this round", "state": "bye"}
+    opp = m["black_name"] if m["white_player_id"] == pid else m["white_name"]
+    opp = opp or "your opponent"
+    if m["status"] == "pending":
+        return {"summary": f"Your match is ready — vs {opp}", "state": "ready"}
+    if m["status"] == "reported":
+        if m["reported_by"] == pid:
+            return {"summary": f"Waiting for {opp} to confirm", "state": "waiting_confirm"}
+        return {"summary": f"Confirm your result vs {opp}", "state": "needs_confirm"}
+    if m["status"] == "disputed":
+        return {"summary": "Disputed — the host will resolve it", "state": "disputed"}
+    # confirmed
+    return {"summary": "Done — waiting for the next round", "state": "done_round"}
+
+
 def get_state_snapshot(tid: str) -> dict:
     """Full snapshot used on initial WebSocket connection or full page render.
 
@@ -649,6 +902,7 @@ def get_state_snapshot(tid: str) -> dict:
     return {
         "tournament": t,
         "players": list_players(tid),
+        "teams": list_teams(tid),
         "current_matches": list_current_round_matches(tid),
         "events": recent_events(tid, 30),
         "round_started_at": round_started_at,

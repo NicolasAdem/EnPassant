@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 from .database import init_db
-from .routers import api, pages
+from .routers import api, pages, auth
 from .services import tournament as svc
 from .websocket_manager import manager
 
@@ -24,6 +24,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # Mount routers
 app.include_router(pages.router)
 app.include_router(api.router)
+app.include_router(auth.router)
 
 
 @app.websocket("/ws/{tid}")

@@ -2,6 +2,27 @@
 
 A map of every file in the repo, what it does, and how the pieces connect.
 
+> **Since the original build**, EnPassant grew accounts and a few big features. The
+> sections below still describe the core engine accurately; this note summarizes
+> what was layered on top:
+>
+> - **Accounts (email + password).** New `users` and `sessions` tables; `app/services/auth.py`
+>   (PBKDF2 hashing, sessions) and `app/routers/auth.py` (`/api/auth/signup|login|logout|me`,
+>   `ep_session` cookie). Creating a tournament and joining now require a signed-in user;
+>   `tournaments.host_user_id` and `players.user_id` link rows to accounts. The `/` route is
+>   a **lobby home** (`home.html`) listing what you host and play in; `login.html` handles both
+>   login and signup. The projector view stays public (spectator link).
+> - **Locked pairing mode.** The per-round `mode_override` was removed — a tournament uses its
+>   creation-time `pairing_mode` for every round.
+> - **Teams.** A `teams` table + `players.team_id`. Same-team players can't be paired (enforced
+>   in `pairing._can_play`, so Swiss avoids teammates for free); team score = sum of members.
+>   Endpoints: teams on create, `team_id` on join, `POST /players/{pid}/team` to reassign.
+> - **Settings & personalization.** The host dashboard has a settings drawer: rename
+>   (`POST /tournaments/{tid}/name`), theme picker, and a background image
+>   (`tournaments.background_url`, `POST /tournaments/{tid}/background`, validated http(s) URL).
+> - **Tests.** `test_accounts.py`, `test_mode_lock.py`, `test_teams.py`, and `tests/conftest.py`
+>   (a fresh-user auth override so the older engine tests keep passing) were added.
+
 ---
 
 ## Repository layout
@@ -14,18 +35,22 @@ EnPassant/
 │   ├── websocket_manager.py     # Pub/sub manager for live broadcasts
 │   ├── routers/
 │   │   ├── api.py               # REST API endpoints (/api/...)
+│   │   ├── auth.py              # Signup/login/logout/me + shared auth deps
 │   │   └── pages.py             # HTML page routes (/, /host, /player, …)
 │   └── services/
-│       ├── tournament.py        # Core business logic (players, rounds, scoring)
+│       ├── auth.py              # Users, sessions, PBKDF2 password hashing
+│       ├── tournament.py        # Core business logic (players, rounds, teams, scoring)
 │       └── pairing.py           # Pairing engine (Swiss, random, round-robin)
 ├── templates/
-│   ├── base.html                # Shared HTML shell (nav, CSS/JS links)
-│   ├── index.html               # Landing page
-│   ├── new.html                 # Create-tournament form
-│   ├── host.html                # Host dashboard (the main control panel)
-│   ├── join.html                # Player join page (via QR code link)
+│   ├── base.html                # Shared HTML shell (CSS/JS links, theme bootstrap)
+│   ├── login.html               # Combined login / signup page
+│   ├── home.html                # Lobby home — the user's hosting/playing tournaments
+│   ├── index.html               # Legacy landing page (no longer routed)
+│   ├── new.html                 # Create-tournament form (mode, location, teams)
+│   ├── host.html                # Host dashboard (control panel + settings drawer)
+│   ├── join.html                # Player join page (name + team pick)
 │   ├── player.html              # Individual player view (report/confirm results)
-│   ├── projector.html           # Projector/TV display (leaderboard + ticker)
+│   ├── projector.html           # Projector/TV display (leaderboard + boards)
 │   └── locked.html              # 403 page shown when host token is missing
 ├── static/
 │   ├── css/

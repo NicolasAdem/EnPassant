@@ -8,6 +8,7 @@
 {% block body_class %}projector-body{% endblock %}
 
 {% block content %}
+<div id="tourney-bg" class="tourney-bg tourney-bg-proj"></div>
 <div class="projector">
   <header class="proj-header">
     <div>
@@ -37,6 +38,7 @@
   <main class="proj-body">
     <section class="proj-leaderboard">
       <div class="proj-section-title">Standings · live</div>
+      <div class="proj-team-summary" id="team-summary" style="display: none;"></div>
       <div class="proj-rank-list" id="rank-list">
         <!-- rows positioned absolutely; populated by JS -->
       </div>
@@ -49,11 +51,6 @@
       </div>
     </section>
   </main>
-
-  <footer class="proj-ticker">
-    <div class="ticker-label">Live feed</div>
-    <div class="ticker-feed" id="ticker"></div>
-  </footer>
 
   <!-- Empty state overlay (no players yet) -->
   <div class="round-hero" id="empty-overlay" style="display: none;">
@@ -81,8 +78,8 @@ const TID = "{{ tid }}";
 const RANK_ROW_HEIGHT_BASE = 72; // px when ≤ 10 players
 
 let lastRanks = new Map(); // player_id -> rank (1-based)
-let tickerQueue = [];
-let tickerSeenIds = new Set();
+let TEAMS_BY_ID = {};      // team_id -> {name,color}
+let PLAYER_TEAM = {};      // player_id -> team_id
 // Task #8: round timer. roundStartedAtMs is the server-stamped start time of
 // the current round in epoch ms, or null if no round is active. The ticker
 // runs at 1Hz off this anchor — so every viewer sees the same elapsed time,
@@ -102,7 +99,14 @@ function render(state, hint) {
   const t = state.tournament;
   const players = state.players || [];
   const matches = state.current_matches || [];
-  const events = state.events || [];
+  const teams = state.teams || [];
+
+  TEAMS_BY_ID = {};
+  teams.forEach(tm => { TEAMS_BY_ID[tm.id] = tm; });
+  PLAYER_TEAM = {};
+  players.forEach(p => { if (p.team_id) PLAYER_TEAM[p.id] = p.team_id; });
+  renderTeamSummary(players, teams);
+  applyBackground(t.background_url);
 
   document.getElementById('proj-title').textContent = t.name;
   document.getElementById('proj-round').textContent = t.current_round || '—';
@@ -125,12 +129,40 @@ function render(state, hint) {
 
   renderLeaderboard(players, matches);
   renderMatchList(matches, t);
-  renderTicker(events);
 
   // Round-start hero
   if (hint && hint.kind === 'round_start') {
     showRoundHero(hint.round, hint.message);
   }
+}
+
+function applyBackground(url) {
+  const el = document.getElementById('tourney-bg');
+  if (!el) return;
+  const safe = (url && /^https?:\/\/[^\s"'()<>\\]+$/.test(url)) ? url : null;
+  el.style.backgroundImage = safe ? `url("${safe}")` : '';
+}
+
+function projTeamDot(pid) {
+  const tm = TEAMS_BY_ID[PLAYER_TEAM[pid]];
+  if (!tm) return '';
+  return `<span class="team-dot" style="background: ${tm.color}; margin-right: 0.5rem;"></span>`;
+}
+
+function renderTeamSummary(players, teams) {
+  const el = document.getElementById('team-summary');
+  if (!teams.length) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  const totals = {};
+  teams.forEach(tm => { totals[tm.id] = { name: tm.name, color: tm.color, score: 0 }; });
+  players.forEach(p => { if (p.team_id && totals[p.team_id]) totals[p.team_id].score += p.score; });
+  const rows = teams.map(tm => totals[tm.id]).sort((a, b) => b.score - a.score);
+  el.innerHTML = rows.map(r => `
+    <div class="team-pill" style="--tc: ${r.color};">
+      <span class="team-dot" style="background: ${r.color};"></span>
+      <span class="tp-name">${EP.escape(r.name)}</span>
+      <span class="tp-score">${EP.formatScore(r.score)}</span>
+    </div>`).join('');
 }
 
 function renderLeaderboard(players, matches) {
@@ -188,7 +220,7 @@ function renderLeaderboard(players, matches) {
     el.innerHTML = `
       <div class="rank-num">${newRank}</div>
       <div>
-        <div class="rank-name">${EP.escape(p.name)}</div>
+        <div class="rank-name">${projTeamDot(p.id)}${EP.escape(p.name)}</div>
         <div class="rank-elo">ELO ${p.elo}</div>
       </div>
       <div class="rank-score">${EP.formatScore(p.score)}</div>
@@ -242,62 +274,13 @@ function renderMatchList(matches, tournament) {
     return `
       <div class="match-row ${statusCls}">
         <div class="board-num">${m.board_number}${tablePill(m)}</div>
-        <div class="player white">${EP.escape(m.white_name)}</div>
+        <div class="player white">${projTeamDot(m.white_player_id)}${EP.escape(m.white_name)}</div>
         <div class="vs">vs</div>
-        <div class="player black">${EP.escape(m.black_name)}</div>
+        <div class="player black">${projTeamDot(m.black_player_id)}${EP.escape(m.black_name)}</div>
         <div>${badge}</div>
       </div>
     `;
   }).join('');
-}
-
-function renderTicker(events) {
-  // Only result events go on the ticker; we want it to feel like a sportscast feed
-  const ticker = document.getElementById('ticker');
-  const items = events.filter(ev =>
-    ev.kind === 'result' || ev.kind === 'round_start' || ev.kind === 'join' || ev.kind === 'rank_change');
-
-  // Add new items we haven't seen yet
-  for (const ev of items.slice().reverse()) {  // oldest first
-    if (tickerSeenIds.has(ev.id)) continue;
-    tickerSeenIds.add(ev.id);
-    addTickerItem(ev);
-  }
-}
-
-function addTickerItem(ev) {
-  const ticker = document.getElementById('ticker');
-  const el = document.createElement('div');
-  el.className = 'ticker-item';
-  let icon;
-  if (ev.kind === 'result') {
-    icon = '♟';
-  } else if (ev.kind === 'round_start') {
-    icon = '◆';
-  } else if (ev.kind === 'join') {
-    icon = '+';
-  } else if (ev.kind === 'rank_change') {
-    // Direction comes from the payload (json string from the server) — fall
-    // back to parsing the message text only if payload is missing, since the
-    // payload is the source of truth and the message text is for humans.
-    let direction = null;
-    if (ev.payload) {
-      try {
-        const p = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
-        direction = p.direction;
-      } catch (e) { /* malformed payload — fall through */ }
-    }
-    icon = direction === 'down' ? '↓' : '↑';
-  } else {
-    icon = '·';
-  }
-  el.innerHTML = `<span class="sep">${icon}</span><span>${EP.escape(ev.message)}</span>`;
-  // Stagger start times so multiple items don't all fly together
-  const existing = ticker.querySelectorAll('.ticker-item').length;
-  el.style.animationDelay = `${existing * 1.5}s`;
-  ticker.appendChild(el);
-  // Clean up after the animation
-  setTimeout(() => el.remove(), 22000 + existing * 1500);
 }
 
 function showRoundHero(roundNum, message) {

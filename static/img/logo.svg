@@ -13,10 +13,10 @@
       <rect x="17.5" y="39.5" width="21" height="5.5" rx="2.75"/>
     </g>
   </g>
-  <!-- Wordmark: "en" in Fraunces italic, a green dot, "passant" in green. -->
+  <!-- Wordmark: "En" in white, a green dot, "Passant" in the brand green. -->
   <g font-family="'Fraunces','Times New Roman',serif" font-weight="600">
-    <text x="82" y="48" font-size="34" font-style="italic" fill="#eaf1ea">en</text>
-    <circle cx="131" cy="36" r="3.6" fill="#81b64c"/>
-    <text x="139" y="48" font-size="34" fill="#81b64c">passant</text>
+    <text x="82" y="48" font-size="34" font-style="italic" fill="#ffffff">En</text>
+    <circle cx="134" cy="36" r="3.6" fill="#81b64c"/>
+    <text x="142" y="48" font-size="34" fill="#81b64c">Passant</text>
   </g>
 </svg>

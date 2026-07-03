@@ -217,17 +217,19 @@ document.getElementById('create-form').addEventListener('submit', async (e) => {
     payload.teams = names;
   }
 
+  // "I'm playing too": open the player/join flow in a NEW TAB so the host still
+  // lands on (and keeps) their host dashboard. The tab is opened synchronously
+  // inside the click gesture — pointed at about:blank now, redirected once we
+  // have the tournament id — so popup blockers allow it.
+  const hostPlays = document.getElementById('host-plays').checked;
+  const playerTab = hostPlays ? window.open('', '_blank') : null;
+
   try {
     const t = await EP.api('POST', '/api/tournaments', payload);
-    // "I'm playing too" → send the host through the join flow first (so they
-    // pick a team / confirm their name), then they can open their dashboard
-    // from the lobby. Otherwise go straight to the host dashboard.
-    if (document.getElementById('host-plays').checked) {
-      location.href = `/join/${t.id}`;
-    } else {
-      location.href = `/host/${t.id}?token=${encodeURIComponent(t.host_token)}`;
-    }
+    if (playerTab) playerTab.location = `/join/${t.id}`;
+    location.href = `/host/${t.id}?token=${encodeURIComponent(t.host_token)}`;
   } catch (err) {
+    if (playerTab) playerTab.close();
     EP.toast(err.message, 'error');
     btn.disabled = false;
   }

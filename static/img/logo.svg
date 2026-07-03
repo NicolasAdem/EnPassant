@@ -1,32 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 64" role="img" aria-label="EnPassant">
-  <!-- Rook mark.
-       Built from simple rects + a thin lime base line.
-       Geometry is intentionally chunky and broadcast-friendly. -->
-  <g transform="translate(4 6)">
-    <!-- Crenellations (top battlements): three blocks with two gaps -->
-    <rect x="0"  y="0"  width="10" height="12" fill="#e8f2ec"/>
-    <rect x="15" y="0"  width="10" height="12" fill="#e8f2ec"/>
-    <rect x="30" y="0"  width="10" height="12" fill="#e8f2ec"/>
-    <!-- Neck (narrower middle) -->
-    <rect x="4"  y="12" width="32" height="6"  fill="#e8f2ec"/>
-    <!-- Body (the tower) -->
-    <rect x="2"  y="18" width="36" height="24" fill="#e8f2ec"/>
-    <!-- Base step -->
-    <rect x="0"  y="42" width="40" height="6"  fill="#e8f2ec"/>
-    <!-- Lime signal line under the base — visual link to the brand dot -->
-    <rect x="0"  y="50" width="40" height="2"  fill="#b8ff5c"/>
-
-    <!-- Tiny lime "spark" notch on the right battlement, ties to the brand-dot -->
-    <rect x="32" y="2"  width="6"  height="3"  fill="#b8ff5c"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 72" role="img" aria-label="EnPassant">
+  <!-- Pawn mark on a board-green tile. En passant is a pawn move, so the pawn
+       (with a subtle diagonal capture hint) is the natural brand icon. -->
+  <g transform="translate(8 8)">
+    <rect x="0" y="0" width="56" height="56" rx="14" fill="#1b2820" stroke="#35493b" stroke-width="1.5"/>
+    <!-- diagonal en-passant capture hint (behind the pawn) -->
+    <path d="M11 45 L45 11" fill="none" stroke="#81b64c" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="0.1 6.5" opacity="0.5"/>
+    <!-- pawn -->
+    <g fill="#81b64c">
+      <circle cx="28" cy="15" r="6.5"/>
+      <ellipse cx="28" cy="22" rx="8" ry="2.8"/>
+      <path d="M21.5 40 C21 34 23 27 24 24 L32 24 C33 27 35 34 34.5 40 Z"/>
+      <rect x="17.5" y="39.5" width="21" height="5.5" rx="2.75"/>
+    </g>
   </g>
-
-  <!-- Wordmark.
-       "en" in Fraunces italic, a lime dot, "passant" in solid lime.
-       Falls back to a generic serif if Fraunces isn't loaded. -->
-  <g transform="translate(60 0)" font-family="'Fraunces', 'Times New Roman', serif" font-weight="600">
-    <text x="0"   y="46" font-size="36" font-style="italic" fill="#e8f2ec">en</text>
-    <!-- Brand dot, matches .brand-dot in CSS -->
-    <circle cx="48" cy="34" r="3.5" fill="#b8ff5c"/>
-    <text x="58"  y="46" font-size="36" fill="#b8ff5c">passant</text>
+  <!-- Wordmark: "en" in Fraunces italic, a green dot, "passant" in green. -->
+  <g font-family="'Fraunces','Times New Roman',serif" font-weight="600">
+    <text x="82" y="48" font-size="34" font-style="italic" fill="#eaf1ea">en</text>
+    <circle cx="131" cy="36" r="3.6" fill="#81b64c"/>
+    <text x="139" y="48" font-size="34" fill="#81b64c">passant</text>
   </g>
 </svg>

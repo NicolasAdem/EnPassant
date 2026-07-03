@@ -1,20 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="EnPassant">
-  <!-- Dark rounded background so the rook reads on a light browser tab -->
-  <rect width="64" height="64" rx="12" fill="#07100c"/>
-  <g transform="translate(12 8)">
-    <!-- Crenellations -->
-    <rect x="0"  y="0"  width="10" height="12" fill="#e8f2ec"/>
-    <rect x="15" y="0"  width="10" height="12" fill="#e8f2ec"/>
-    <rect x="30" y="0"  width="10" height="12" fill="#e8f2ec"/>
-    <!-- Neck -->
-    <rect x="4"  y="12" width="32" height="6"  fill="#e8f2ec"/>
-    <!-- Body -->
-    <rect x="2"  y="18" width="36" height="24" fill="#e8f2ec"/>
-    <!-- Base step -->
-    <rect x="0"  y="42" width="40" height="6"  fill="#e8f2ec"/>
-    <!-- Lime signal line -->
-    <rect x="0"  y="50" width="40" height="2"  fill="#b8ff5c"/>
-    <!-- Spark notch -->
-    <rect x="32" y="2"  width="6"  height="3"  fill="#b8ff5c"/>
+  <!-- Dark board-green rounded tile so the pawn reads on a light browser tab -->
+  <rect width="64" height="64" rx="14" fill="#16201a"/>
+  <path d="M14 50 L50 14" fill="none" stroke="#81b64c" stroke-width="3" stroke-linecap="round" stroke-dasharray="0.1 8" opacity="0.45"/>
+  <g fill="#81b64c" transform="translate(4 5)">
+    <circle cx="28" cy="15" r="7"/>
+    <ellipse cx="28" cy="22.5" rx="8.6" ry="3"/>
+    <path d="M21 41 C20.5 34.5 22.7 27 24 24 L32 24 C33.3 27 35.5 34.5 35 41 Z"/>
+    <rect x="16.5" y="40.5" width="23" height="6" rx="3"/>
   </g>
 </svg>

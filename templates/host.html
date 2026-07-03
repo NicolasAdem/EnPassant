@@ -65,7 +65,7 @@
             On-site event · tables enabled
           </span>
         </div>
-        <a href="/join/{{ tid }}" class="btn btn-ghost" style="margin-top: 1rem; width: 100%;">＋ Join as a player</a>
+        <a id="join-as-player" href="/join/{{ tid }}" target="_blank" rel="noopener" class="btn btn-ghost" style="margin-top: 1rem; width: 100%;">＋ Join as a player</a>
       </div>
 
       <!-- Round controls -->
@@ -223,6 +223,7 @@
 <script>
 const TID = "{{ tid }}";
 const TOKEN = "{{ token }}";
+const ME_ID = "{{ user.id if user else '' }}";  // the logged-in host's account id
 const MODE_LABELS = { swiss: 'Swiss', round_robin: 'Round-robin', random: 'Random', manual: 'Manual' };
 
 const JOIN_LINK = `${location.origin}/join/${TID}`;
@@ -266,6 +267,21 @@ function render(state) {
   // Auto-rounds toggle reflects server state.
   const autoToggle = document.getElementById('auto-rounds-toggle');
   if (autoToggle && document.activeElement !== autoToggle) autoToggle.checked = !!t.auto_rounds;
+
+  // "Join as a player" → once the host has joined, point it at their own player
+  // view instead. Either way it opens in a new tab, so the host dashboard (and
+  // its dispute controls) stays put.
+  const jap = document.getElementById('join-as-player');
+  if (jap) {
+    const mine = ME_ID && players.find(p => p.user_id === ME_ID);
+    if (mine) {
+      jap.href = `/player/${TID}/${mine.id}`;
+      jap.textContent = 'Open my player view ↗';
+    } else {
+      jap.href = `/join/${TID}`;
+      jap.textContent = '＋ Join as a player';
+    }
+  }
 
   // Header name can change via the rename control / another host tab.
   document.getElementById('t-name').textContent = t.name;
